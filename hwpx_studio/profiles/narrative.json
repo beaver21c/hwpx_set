@@ -1,0 +1,120 @@
+{
+  "schema": "hwpx-studio.profile.v1",
+  "name": "서술식 보고서",
+  "mode": "narrative",
+  "fonts": {
+    "bold": "맑은 고딕",
+    "light": "맑은 고딕",
+    "fallback": "맑은 고딕"
+  },
+  "page": {
+    "size": "A4",
+    "margin_mm": {
+      "left": 20,
+      "right": 20,
+      "top": 10,
+      "bottom": 10,
+      "header": 10,
+      "footer": 10
+    }
+  },
+  "levels": [
+    {
+      "key": "title",
+      "name": "로마자",
+      "marker": "#",
+      "prefix": "AUTO_ROMAN",
+      "size_pt": 18,
+      "bold": true,
+      "font": "bold",
+      "color": "#2a56a1",
+      "left_pt": 0,
+      "indent_pt": 0,
+      "spacing_below_pt": 10,
+      "line_spacing": 180,
+      "align": "JUSTIFY"
+    },
+    {
+      "key": "title2",
+      "name": "숫자",
+      "marker": "##",
+      "prefix": "AUTO_NUM",
+      "size_pt": 16,
+      "bold": true,
+      "font": "bold",
+      "color": "#1F3864",
+      "left_pt": 0,
+      "indent_pt": 0,
+      "spacing_below_pt": 10,
+      "line_spacing": 180,
+      "align": "JUSTIFY"
+    }
+  ],
+  "body": {
+    "name": "본문",
+    "size_pt": 12,
+    "font": "light",
+    "line_spacing": 180,
+    "first_line_indent_pt": 10,
+    "spacing_below_pt": 4,
+    "align": "JUSTIFY"
+  },
+  "table": {
+    "border_color": "#999999",
+    "header_bg": "#4472C4",
+    "width_mm": 162.5,
+    "cell_margin_mm": 0.3,
+    "treat_as_char": true,
+    "anchor_level": null,
+    "top": {
+      "name": "표(위)",
+      "eng_name": "Table(Top)",
+      "size_pt": 11,
+      "bold": true,
+      "font": "bold",
+      "color": "#FFFFFF",
+      "left_pt": 0,
+      "indent_pt": 0,
+      "prefix": "",
+      "spacing_below_pt": 0,
+      "line_spacing": 120,
+      "align": "CENTER"
+    },
+    "mid": {
+      "name": "표(중간)",
+      "eng_name": "Table(Mid)",
+      "size_pt": 11,
+      "bold": false,
+      "font": "light",
+      "color": "#000000",
+      "left_pt": 0,
+      "indent_pt": 0,
+      "prefix": "",
+      "spacing_below_pt": 0,
+      "line_spacing": 120,
+      "align": "CENTER"
+    },
+    "left": {
+      "name": "표(왼쪽)",
+      "eng_name": "Table(Left)",
+      "size_pt": 11,
+      "bold": false,
+      "font": "light",
+      "color": "#000000",
+      "left_pt": 0,
+      "indent_pt": 12,
+      "prefix": "· ",
+      "spacing_below_pt": 0,
+      "line_spacing": 120,
+      "align": "LEFT"
+    }
+  },
+  "image": {
+    "default_width_mm": 120,
+    "treat_as_char": true
+  },
+  "rules": {
+    "min_children": {},
+    "period_policy": "always_period"
+  }
+}

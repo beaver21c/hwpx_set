@@ -1,0 +1,296 @@
+"""hwpx-studio 명령줄 도구.
+
+    hwpx-studio init     [--from policy-default] profile.json
+    hwpx-studio extract  ref.hwpx -o profile.json [--report report.md]
+    hwpx-studio build    input.md -p profile.json -o out.hwpx [--strict] [--preview]
+    hwpx-studio lint     input.md -p profile.json [--strict]
+    hwpx-studio preview  out.hwpx -o preview.html
+    hwpx-studio diagram  "대표 > 기획부, 운영부" -o org.hwpx
+    hwpx-studio export-skill profile.json -o ./my-skill [--standalone]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence
+
+from .profile import (
+    DEFAULT_PROFILE,
+    list_builtin_profiles,
+    load_profile,
+    merge_profile,
+    resolve_profile_path,
+    save_profile,
+    validate_profile,
+)
+
+
+def _echo(msg: str) -> None:
+    print(msg)
+
+
+def _load(profile_arg: Optional[str]) -> Dict[str, Any]:
+    return load_profile(profile_arg or "policy-default")
+
+
+# ──────────────────────────────────────────────────────────────
+# init
+# ──────────────────────────────────────────────────────────────
+def run_init(out_path: str, base: str = "policy-default", levels: Optional[int] = None,
+             mode: Optional[str] = None, font_bold: Optional[str] = None,
+             font_light: Optional[str] = None) -> int:
+    try:
+        profile = load_profile(base)
+    except FileNotFoundError:
+        _echo(f"기본 프로파일을 찾을 수 없음: {base} "
+              f"(사용 가능: {', '.join(list_builtin_profiles())})")
+        return 1
+
+    if mode:
+        profile["mode"] = mode
+    if font_bold:
+        profile["fonts"]["bold"] = font_bold
+    if font_light:
+        profile["fonts"]["light"] = font_light
+        profile["fonts"]["fallback"] = font_light
+    if levels:
+        profile["levels"] = profile["levels"][:max(1, levels)]
+        keys = {lv["key"] for lv in profile["levels"]}
+        if profile["table"].get("anchor_level") not in keys:
+            profile["table"]["anchor_level"] = None
+        profile["rules"]["min_children"] = {
+            k: v for k, v in (profile["rules"].get("min_children") or {}).items()
+            if k in keys
+        }
+
+    errors = validate_profile(profile)
+    if errors:
+        _echo("프로파일 검증 실패:\n  " + "\n  ".join(errors))
+        return 1
+    save_profile(profile, out_path)
+    _echo(f"생성: {out_path} (레벨 {len(profile['levels'])}개, mode={profile['mode']})")
+    return 0
+
+
+# ──────────────────────────────────────────────────────────────
+# extract
+# ──────────────────────────────────────────────────────────────
+def run_extract(source: str, out_path: Optional[str], report_path: Optional[str],
+                name: str = "추출 프로파일", show_report: bool = True) -> int:
+    from .extractor import extract_profile, write_outputs
+
+    result = extract_profile(source, name=name)
+    if show_report and not report_path:
+        _echo(result.report)
+    write_outputs(result, out_path, report_path)
+    if out_path:
+        _echo(f"생성: {out_path} (레벨 {len(result.profile.get('levels', []))}개)")
+    if report_path:
+        _echo(f"생성: {report_path}")
+    if not out_path and not report_path:
+        _echo(json.dumps(result.profile, ensure_ascii=False, indent=2))
+    _echo("※ 추정 결과다. 리포트의 '접두 후보'와 레벨 순서를 확인한 뒤 사용할 것")
+    return 0
+
+
+# ──────────────────────────────────────────────────────────────
+# lint / build
+# ──────────────────────────────────────────────────────────────
+def _parse_input(input_path: str, profile: Dict[str, Any]):
+    from .parser import parse_file
+
+    return parse_file(input_path, profile)
+
+
+def run_lint(input_path: str, profile_arg: Optional[str], strict: bool = False) -> int:
+    from .lint import format_issues, has_blocking, lint_items
+
+    profile = _load(profile_arg)
+    parsed = _parse_input(input_path, profile)
+    issues = lint_items(parsed.items, profile, parsed.line_of, parsed.warnings)
+    _echo(format_issues(issues))
+    return 1 if has_blocking(issues, strict) else 0
+
+
+def run_build(input_path: str, profile_arg: Optional[str], out_path: str,
+              strict: bool = False, preview_path: Optional[str] = None,
+              lint: bool = True) -> int:
+    from .engine import build_document
+    from .lint import format_issues, has_blocking, lint_items
+
+    profile = _load(profile_arg)
+    parsed = _parse_input(input_path, profile)
+
+    if lint:
+        issues = lint_items(parsed.items, profile, parsed.line_of, parsed.warnings)
+        if issues:
+            _echo(format_issues(issues))
+        if has_blocking(issues, strict):
+            _echo("중단: 위 사항을 고친 뒤 다시 실행하세요 (--no-lint로 건너뛸 수 있음)")
+            return 1
+
+    result = build_document(profile, parsed.items, out_path)
+    for warn in result.warnings:
+        _echo(f"[경고] {warn}")
+    _echo(f"생성: {out_path} ({len(result.data):,} bytes)")
+
+    if preview_path:
+        from .preview import render_preview
+
+        _, warns = render_preview(out_path, preview_path)
+        for warn in warns:
+            _echo(f"[미리보기 경고] {warn}")
+        _echo(f"생성: {preview_path}")
+    return 0
+
+
+# ──────────────────────────────────────────────────────────────
+# preview / diagram / export-skill
+# ──────────────────────────────────────────────────────────────
+def run_preview(source: str, out_path: str) -> int:
+    from .preview import DISCLAIMER, render_preview
+
+    _, warns = render_preview(source, out_path)
+    for warn in warns:
+        _echo(f"[경고] {warn}")
+    _echo(f"생성: {out_path}\n※ {DISCLAIMER}")
+    return 0
+
+
+def _diagram_spec_from_arg(text: str, dtype: str, title: str):
+    """`대표 > 기획부, 운영부` 축약 표기 또는 :::diagram 블록 본문을 spec으로."""
+    from .diagram import DiagramSpec, parse_text as parse_diagram_text
+
+    if text.strip().startswith(":::") or "\n" in text:
+        return parse_diagram_text(text)
+    if dtype == "flow":
+        return DiagramSpec(type="flow", title=title, lines=[text])
+    lines: List[str] = []
+    for depth, part in enumerate(text.split(">")):
+        names = [n.strip() for n in part.split(",") if n.strip()]
+        for name in names:
+            lines.append("  " * depth + name)
+    return DiagramSpec(type=dtype, title=title, lines=lines)
+
+
+def run_diagram(text: str, out_path: str, profile_arg: Optional[str],
+                dtype: str = "org", title: str = "", render: Optional[str] = None) -> int:
+    from .engine import build_document
+
+    profile = _load(profile_arg)
+    spec = _diagram_spec_from_arg(text, dtype, title)
+    if render:
+        spec.options["render"] = render
+    result = build_document(profile, [{"type": "diagram", "spec": spec.to_dict()}], out_path)
+    for warn in result.warnings:
+        _echo(f"[경고] {warn}")
+    _echo(f"생성: {out_path}")
+    return 0
+
+
+def run_export_skill(profile_arg: str, out_dir: str, slug: str = "hwpx-report",
+                     standalone: bool = False) -> int:
+    from .export_skill import export_skill
+
+    profile = _load(profile_arg)
+    created = export_skill(profile, out_dir, slug=slug, standalone=standalone)
+    for path in created:
+        _echo(f"생성: {path}")
+    return 0
+
+
+# ──────────────────────────────────────────────────────────────
+# 진입점
+# ──────────────────────────────────────────────────────────────
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        prog="hwpx-studio",
+        description="서식 프로파일로 한국어 보고서 hwpx를 만들고, 기존 hwpx의 서식을 읽는다",
+    )
+    sub = ap.add_subparsers(dest="command", required=True)
+
+    p_init = sub.add_parser("init", help="프로파일 JSON 만들기")
+    p_init.add_argument("out", help="저장할 프로파일 경로")
+    p_init.add_argument("--from", dest="base", default="policy-default",
+                        help=f"기준 프로파일 ({', '.join(list_builtin_profiles()) or '내장'})")
+    p_init.add_argument("--levels", type=int, help="레벨 수를 앞에서부터 N개로 자름")
+    p_init.add_argument("--mode", choices=["outline", "narrative"])
+    p_init.add_argument("--font-bold")
+    p_init.add_argument("--font-light")
+
+    p_ext = sub.add_parser("extract", help="hwpx에서 서식 읽어 프로파일 만들기")
+    p_ext.add_argument("source", help="기준이 될 .hwpx")
+    p_ext.add_argument("-o", "--out", help="저장할 프로파일 경로")
+    p_ext.add_argument("--report", help="근거 리포트(markdown) 저장 경로")
+    p_ext.add_argument("--name", default="추출 프로파일")
+
+    p_build = sub.add_parser("build", help="마커 텍스트 → hwpx")
+    p_build.add_argument("input")
+    p_build.add_argument("-p", "--profile")
+    p_build.add_argument("-o", "--out", default="report.hwpx")
+    p_build.add_argument("--strict", action="store_true", help="경고도 오류로 취급")
+    p_build.add_argument("--no-lint", action="store_true")
+    p_build.add_argument("--preview", help="HTML 미리보기 저장 경로")
+
+    p_lint = sub.add_parser("lint", help="본문 규칙 검사")
+    p_lint.add_argument("input")
+    p_lint.add_argument("-p", "--profile")
+    p_lint.add_argument("--strict", action="store_true")
+
+    p_prev = sub.add_parser("preview", help="hwpx → HTML 근사 미리보기")
+    p_prev.add_argument("source")
+    p_prev.add_argument("-o", "--out", default="preview.html")
+
+    p_dia = sub.add_parser("diagram", help="도식만 단독 생성")
+    p_dia.add_argument("text", help='"대표 > 기획부, 운영부" 또는 :::diagram 블록')
+    p_dia.add_argument("-o", "--out", default="diagram.hwpx")
+    p_dia.add_argument("-p", "--profile")
+    p_dia.add_argument("-t", "--type", dest="dtype", default="org",
+                       choices=["org", "flow", "matrix"])
+    p_dia.add_argument("--title", default="")
+    p_dia.add_argument("--render", choices=["table", "image"])
+
+    p_exp = sub.add_parser("export-skill", help="프로파일 → 스킬 폴더")
+    p_exp.add_argument("profile")
+    p_exp.add_argument("-o", "--out", default="./my-skill")
+    p_exp.add_argument("--slug", default="hwpx-report")
+    p_exp.add_argument("--standalone", action="store_true",
+                       help="hwpx_studio 패키지를 스킬 폴더에 함께 넣음")
+    return ap
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+    cmd = args.command
+    try:
+        if cmd == "init":
+            return run_init(args.out, args.base, args.levels, args.mode,
+                            args.font_bold, args.font_light)
+        if cmd == "extract":
+            return run_extract(args.source, args.out, args.report, args.name)
+        if cmd == "build":
+            return run_build(args.input, args.profile, args.out, args.strict,
+                             args.preview, lint=not args.no_lint)
+        if cmd == "lint":
+            return run_lint(args.input, args.profile, args.strict)
+        if cmd == "preview":
+            return run_preview(args.source, args.out)
+        if cmd == "diagram":
+            return run_diagram(args.text, args.out, args.profile, args.dtype,
+                               args.title, args.render)
+        if cmd == "export-skill":
+            return run_export_skill(args.profile, args.out, args.slug, args.standalone)
+    except FileNotFoundError as exc:
+        _echo(f"파일을 찾을 수 없음: {exc}")
+        return 2
+    except ValueError as exc:
+        _echo(f"오류: {exc}")
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

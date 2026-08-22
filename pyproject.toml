@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hwpx-studio"
+version = "0.1.0"
+description = "서식 프로파일로 한국어 개조식·서술식 보고서를 .hwpx로 만들고, 기존 .hwpx의 서식을 읽어 프로파일로 되돌리는 도구"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+keywords = ["hwpx", "hwp", "hangul", "report", "korean"]
+dependencies = ["python-hwpx>=6.2,<7"]
+
+[project.optional-dependencies]
+image = ["matplotlib>=3.5"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+hwpx-studio = "hwpx_studio.cli:main"
+
+[tool.setuptools]
+packages = ["hwpx_studio"]
+
+[tool.setuptools.package-data]
+hwpx_studio = ["profiles/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

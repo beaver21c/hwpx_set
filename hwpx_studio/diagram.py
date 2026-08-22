@@ -1,0 +1,609 @@
+"""도식(조직도·체계도·절차도) 생성.
+
+입력은 텍스트 블록이다.
+
+    :::diagram type=org title="조직 체계"
+    대표
+      기획부
+        기획팀
+      운영부
+    :::
+
+기본 렌더는 표(`render=table`)다. 격자 셀의 한 변 테두리로 연결선을 그리며,
+연결선은 상자 칸의 **가운데**(상자를 2개 열에 걸쳐 병합한 경계)에 놓인다.
+폭이 `diagram.max_width_mm`를 넘으면 상자 폭을 줄이고, 그래도 넘치면
+이미지 렌더로 폴백한다.
+"""
+
+from __future__ import annotations
+
+import re
+import shlex
+import tempfile
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from .units import mm
+
+ARROW_RIGHT = "→"
+ARROW_DOWN = "▼"
+_ARROW_SPLIT = re.compile(r"\s*(?:→|->|=>|▶|>)\s*")
+
+VALID_TYPES = ("org", "flow", "matrix")
+
+
+# ──────────────────────────────────────────────────────────────
+# 입력 파싱
+# ──────────────────────────────────────────────────────────────
+@dataclass
+class DiagramSpec:
+    type: str = "org"
+    title: str = ""
+    options: Dict[str, Any] = field(default_factory=dict)
+    lines: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"type": self.type, "title": self.title,
+                "options": dict(self.options), "lines": list(self.lines)}
+
+
+def ensure_spec(spec: Any) -> DiagramSpec:
+    if isinstance(spec, DiagramSpec):
+        return spec
+    if isinstance(spec, dict):
+        return DiagramSpec(
+            type=spec.get("type", "org"),
+            title=spec.get("title", ""),
+            options=dict(spec.get("options") or {}),
+            lines=list(spec.get("lines") or []),
+        )
+    raise TypeError(f"도식 spec 형식을 알 수 없음: {type(spec)!r}")
+
+
+def parse_options(header: str) -> Dict[str, str]:
+    """`type=org title="조직 체계" render=image` → dict."""
+    out: Dict[str, str] = {}
+    try:
+        tokens = shlex.split(header)
+    except ValueError:
+        tokens = header.split()
+    for token in tokens:
+        if "=" in token:
+            key, _, value = token.partition("=")
+            out[key.strip()] = value.strip().strip('"').strip("'")
+    return out
+
+
+def parse_block(header: str, lines: Sequence[str]) -> DiagramSpec:
+    """`:::diagram` 다음의 헤더 문자열과 블록 본문 줄로 spec을 만든다."""
+    opts = parse_options(header)
+    dtype = opts.pop("type", "org")
+    if dtype not in VALID_TYPES:
+        dtype = "org"
+    title = opts.pop("title", "")
+    body = [ln.rstrip() for ln in lines]
+    while body and not body[0].strip():
+        body.pop(0)
+    while body and not body[-1].strip():
+        body.pop()
+    return DiagramSpec(type=dtype, title=title, options=opts, lines=body)
+
+
+def parse_text(text: str) -> DiagramSpec:
+    """`:::diagram ...`부터 `:::`까지 통째로 받은 문자열을 spec으로."""
+    lines = text.splitlines()
+    header = ""
+    body: List[str] = []
+    for i, line in enumerate(lines):
+        if line.strip().startswith(":::"):
+            header = line.strip()[3:].strip()
+            if header.startswith("diagram"):
+                header = header[len("diagram"):].strip()
+            body = [ln for ln in lines[i + 1:] if not ln.strip().startswith(":::")]
+            break
+    else:
+        body = lines
+    return parse_block(header, body)
+
+
+# ──────────────────────────────────────────────────────────────
+# 트리 파싱(org)
+# ──────────────────────────────────────────────────────────────
+@dataclass
+class Node:
+    text: str
+    depth: int = 0
+    children: List["Node"] = field(default_factory=list)
+    center: int = 0
+    row: int = 0
+
+
+def parse_tree(lines: Sequence[str], indent_size: int = 2) -> List[Node]:
+    """들여쓰기 트리 → 루트 노드 목록(여러 루트 허용).
+
+    2칸 들여쓰기가 표준이지만, 실제 입력의 들여쓰기 폭이 일정하지 않은 경우를
+    대비해 '들여쓰기 값의 등장 순서'로 깊이를 매긴다.
+    """
+    entries: List[Tuple[int, str]] = []
+    for raw in lines:
+        if not raw.strip():
+            continue
+        expanded = raw.replace("\t", " " * indent_size)
+        stripped = expanded.lstrip(" ")
+        indent = len(expanded) - len(stripped)
+        text = stripped.strip()
+        text = re.sub(r"^[-*•]\s+", "", text)  # 마크다운 목록 습관 흡수
+        if text:
+            entries.append((indent, text))
+
+    roots: List[Node] = []
+    stack: List[Tuple[int, Node]] = []   # (indent, node)
+    for indent, text in entries:
+        node = Node(text=text)
+        while stack and stack[-1][0] >= indent:
+            stack.pop()
+        if stack:
+            parent = stack[-1][1]
+            node.depth = parent.depth + 1
+            parent.children.append(node)
+        else:
+            node.depth = 0
+            roots.append(node)
+        stack.append((indent, node))
+    return roots
+
+
+def _leaves(node: Node) -> int:
+    return 1 if not node.children else sum(_leaves(c) for c in node.children)
+
+
+def _max_depth(nodes: Sequence[Node]) -> int:
+    depth = 0
+    for n in nodes:
+        depth = max(depth, n.depth + 1, _max_depth(n.children))
+    return depth
+
+
+def _walk(nodes: Sequence[Node]):
+    for n in nodes:
+        yield n
+        yield from _walk(n.children)
+
+
+# ──────────────────────────────────────────────────────────────
+# 격자 계획
+# ──────────────────────────────────────────────────────────────
+@dataclass
+class CellPlan:
+    row: int
+    col: int
+    text: str = ""
+    borders: Tuple[str, ...] = ()
+    fill: Optional[str] = None
+    char: str = "diagram"
+    col_span: int = 1
+    row_span: int = 1
+
+
+@dataclass
+class GridPlan:
+    rows: int
+    cols: int
+    col_widths_mm: List[float]
+    row_heights_mm: List[float]
+    cells: List[CellPlan] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    fallback_to_image: bool = False
+    title: str = ""
+
+    @property
+    def total_width_mm(self) -> float:
+        return sum(self.col_widths_mm)
+
+    @property
+    def total_height_mm(self) -> float:
+        return sum(self.row_heights_mm)
+
+
+MIN_BOX_WIDTH_MM = 12.0
+
+
+def build_grid(spec: DiagramSpec, profile: Dict[str, Any], force: bool = False) -> GridPlan:
+    spec = ensure_spec(spec)
+    if spec.type == "flow":
+        grid = _grid_flow(spec, profile)
+    elif spec.type == "matrix":
+        grid = _grid_matrix(spec, profile)
+    else:
+        grid = _grid_org(spec, profile)
+    grid.title = spec.title
+
+    max_w = float(spec.options.get("width") or profile["diagram"]["max_width_mm"])
+    if force:
+        grid.fallback_to_image = False       # 강제 표 렌더(이미지 백엔드 없음 등)
+    if grid.total_width_mm > max_w + 0.01 and not force:
+        grid.warnings.append(
+            f"도식 폭 {grid.total_width_mm:.0f}mm > 최대 {max_w:.0f}mm → 이미지로 폴백"
+        )
+        grid.fallback_to_image = True
+    return grid
+
+
+def _fit_box_width(n_slots: int, profile: Dict[str, Any], max_w: float,
+                   warnings: List[str]) -> Tuple[float, float]:
+    """상자 폭·간격을 최대 폭 안에 맞춘다. 반환 (box_w, gap)."""
+    dia = profile["diagram"]
+    box_w = float(dia["col_width_mm"])
+    gap = float(dia["col_gap_mm"])
+    total = n_slots * box_w + (n_slots - 1) * gap
+    if total <= max_w or n_slots <= 0:
+        return box_w, gap
+    gap = max(2.0, gap * 0.5)
+    box_w = (max_w - (n_slots - 1) * gap) / n_slots
+    return box_w, gap
+
+
+def _grid_org(spec: DiagramSpec, profile: Dict[str, Any]) -> GridPlan:
+    """계층형 도식.
+
+    격자는 **균일한 폭의 열**로 만든다. 상자는 짝수 개(`grid_resolution`)의 열을
+    병합해 그리므로 병합 구간의 한가운데가 곧 열 경계가 되고, 연결선은 그 경계에
+    해당하는 셀의 한 변(오른쪽/위쪽) 테두리로 그린다. 열 폭이 균일하기 때문에
+    부모 노드의 중심(자식 중심들의 중간값)이 항상 유효한 열 경계에 떨어진다.
+    """
+    dia = profile["diagram"]
+    warnings: List[str] = []
+    roots = parse_tree(spec.lines)
+    if not roots:
+        return GridPlan(1, 1, [float(dia["col_width_mm"])], [float(dia["row_height_mm"])],
+                        warnings=["도식 내용이 비어 있음"])
+
+    box_cols = int(dia.get("grid_resolution", 6) or 6)
+    box_cols = max(2, box_cols + (box_cols % 2))        # 짝수 보정
+    half = box_cols // 2
+
+    n_leaves = sum(_leaves(r) for r in roots)
+    depth = _max_depth(roots)
+    max_w = float(spec.options.get("width") or dia["max_width_mm"])
+    box_w, gap = _fit_box_width(n_leaves, profile, max_w, warnings)
+
+    unit = box_w / box_cols
+    gap_cols = max(2, 2 * max(1, round(gap / (2 * unit))))
+    stride = box_cols + gap_cols
+    cols = stride * n_leaves - gap_cols
+
+    if cols * unit > max_w:                              # 양자화 뒤 재조정
+        unit = max_w / cols
+        box_w = unit * box_cols
+    too_narrow = box_w < MIN_BOX_WIDTH_MM
+    if too_narrow:
+        warnings.append(
+            f"같은 단계 상자가 {n_leaves}개여서 폭이 {box_w:.1f}mm까지 좁아짐 "
+            f"→ 이미지로 폴백")
+    elif abs(box_w - float(dia["col_width_mm"])) > 0.5:
+        warnings.append(f"도식 상자 폭을 {box_w:.1f}mm로 자동 축소")
+
+    # 리프 슬롯 배정 → 노드별 중심 열(열 경계) 계산
+    slot = {"i": 0}
+
+    def assign(node: Node) -> int:
+        if not node.children:
+            center = stride * slot["i"] + half - 1
+            slot["i"] += 1
+        else:
+            centers = [assign(c) for c in node.children]
+            center = (centers[0] + centers[-1]) // 2
+        node.center = center
+        return center
+
+    for root in roots:
+        assign(root)
+
+    rows = 3 * depth - 2 if depth else 1
+    row_h = float(dia["row_height_mm"])
+    row_gap = float(dia["row_gap_mm"])
+    row_heights: List[float] = []
+    for d in range(depth):
+        row_heights.append(row_h)
+        if d < depth - 1:
+            row_heights += [row_gap / 2, row_gap / 2]
+
+    cells: List[CellPlan] = []
+    box_borders = ("left", "right", "top", "bottom")
+    for node in _walk(roots):
+        node.row = 3 * node.depth
+        start = max(0, min(node.center - (half - 1), cols - box_cols))
+        cells.append(CellPlan(
+            row=node.row, col=start, text=node.text, borders=box_borders,
+            fill=dia["root_fill"] if node.depth == 0 else dia["box_fill"],
+            char="diagram_root" if node.depth == 0 else "diagram",
+            col_span=box_cols,
+        ))
+
+    # 연결선: 부모 아래 세로선 → 가로 버스 → 자식 위 세로선
+    for node in _walk(roots):
+        if not node.children:
+            continue
+        row_a = 3 * node.depth + 1
+        row_b = row_a + 1
+        centers = sorted(c.center for c in node.children)
+        _add_border(cells, row_a, node.center, "right")
+        for col in range(centers[0] + 1, centers[-1] + 1):
+            _add_border(cells, row_b, col, "top")
+        for col in centers:
+            _add_border(cells, row_b, col, "right")
+
+    return GridPlan(rows=rows, cols=cols, col_widths_mm=[unit] * cols,
+                    row_heights_mm=row_heights, cells=cells, warnings=warnings,
+                    fallback_to_image=too_narrow)
+
+
+def _add_border(cells: List[CellPlan], row: int, col: int, edge: str) -> None:
+    for cell in cells:
+        if cell.row == row and cell.col == col:
+            if edge not in cell.borders:
+                cell.borders = tuple(sorted(set(cell.borders) | {edge}))
+            return
+    cells.append(CellPlan(row=row, col=col, borders=(edge,)))
+
+
+def _grid_flow(spec: DiagramSpec, profile: Dict[str, Any]) -> GridPlan:
+    dia = profile["diagram"]
+    warnings: List[str] = []
+    steps: List[str] = []
+    for line in spec.lines:
+        if not line.strip():
+            continue
+        steps.extend(s.strip() for s in _ARROW_SPLIT.split(line.strip()) if s.strip())
+    if not steps:
+        return GridPlan(1, 1, [float(dia["col_width_mm"])], [float(dia["row_height_mm"])],
+                        warnings=["도식 내용이 비어 있음"])
+
+    direction = (spec.options.get("direction") or "right").lower()
+    box_borders = ("left", "right", "top", "bottom")
+    row_h = float(dia["row_height_mm"])
+    cells: List[CellPlan] = []
+
+    if direction.startswith("d"):  # down
+        rows = 2 * len(steps) - 1
+        max_w = float(spec.options.get("width") or dia["max_width_mm"])
+        box_w = min(float(dia["col_width_mm"]) * 2, max_w)
+        for i, text in enumerate(steps):
+            cells.append(CellPlan(row=2 * i, col=0, text=text,
+                                  borders=box_borders, fill=dia["box_fill"]))
+            if i < len(steps) - 1:
+                cells.append(CellPlan(row=2 * i + 1, col=0, text=ARROW_DOWN))
+        heights = []
+        for i in range(rows):
+            heights.append(row_h if i % 2 == 0 else float(dia["row_gap_mm"]))
+        return GridPlan(rows=rows, cols=1, col_widths_mm=[box_w],
+                        row_heights_mm=heights, cells=cells, warnings=warnings)
+
+    n = len(steps)
+    cols = 2 * n - 1
+    max_w = float(spec.options.get("width") or dia["max_width_mm"])
+    arrow_w = max(4.0, float(dia["col_gap_mm"]))
+    box_w = float(dia["col_width_mm"])
+    if n * box_w + (n - 1) * arrow_w > max_w:
+        box_w = max(MIN_BOX_WIDTH_MM, (max_w - (n - 1) * arrow_w) / n)
+        warnings.append(f"절차도 상자 폭을 {box_w:.1f}mm로 자동 축소")
+    widths: List[float] = []
+    for i, text in enumerate(steps):
+        cells.append(CellPlan(row=0, col=2 * i, text=text,
+                              borders=box_borders, fill=dia["box_fill"]))
+        widths.append(box_w)
+        if i < n - 1:
+            cells.append(CellPlan(row=0, col=2 * i + 1, text=ARROW_RIGHT))
+            widths.append(arrow_w)
+    return GridPlan(rows=1, cols=cols, col_widths_mm=widths,
+                    row_heights_mm=[row_h], cells=cells, warnings=warnings)
+
+
+def _grid_matrix(spec: DiagramSpec, profile: Dict[str, Any]) -> GridPlan:
+    dia = profile["diagram"]
+    warnings: List[str] = []
+    table: List[List[str]] = []
+    for line in spec.lines:
+        s = line.strip()
+        if not s.startswith("|"):
+            continue
+        if re.fullmatch(r"\|[\s:|-]+\|", s):
+            continue
+        parts = [p.strip() for p in s.strip("|").split("|")]
+        table.append(parts)
+    if not table:
+        return GridPlan(1, 1, [float(dia["col_width_mm"])], [float(dia["row_height_mm"])],
+                        warnings=["도식 내용이 비어 있음"])
+
+    cols = max(len(r) for r in table)
+    rows = len(table)
+    max_w = float(spec.options.get("width") or dia["max_width_mm"])
+    col_w = min(float(dia["col_width_mm"]), max_w / cols)
+    box_borders = ("left", "right", "top", "bottom")
+
+    cells: List[CellPlan] = []
+    for r, row in enumerate(table):
+        for c in range(cols):
+            text = row[c] if c < len(row) else ""
+            is_head = r == 0 or c == 0
+            cells.append(CellPlan(
+                row=r, col=c, text=text, borders=box_borders,
+                fill=dia["root_fill"] if (r == 0 and c == 0 and not text)
+                else (dia["box_fill"] if is_head else None),
+                char="diagram" if not is_head else "diagram",
+            ))
+    return GridPlan(rows=rows, cols=cols, col_widths_mm=[col_w] * cols,
+                    row_heights_mm=[float(dia["row_height_mm"])] * rows,
+                    cells=cells, warnings=warnings)
+
+
+# ──────────────────────────────────────────────────────────────
+# 문서에 표로 삽입
+# ──────────────────────────────────────────────────────────────
+def emit_grid(doc, sec, grid: GridPlan, profile: Dict[str, Any], ids,
+              table_plans: List[Dict[str, Any]]) -> None:
+    """GridPlan을 실제 hwpx 표로 만든다(엔진에서 호출)."""
+    dia = profile["diagram"]
+    width_hu = mm(grid.total_width_mm)
+    tbl = doc.add_table(grid.rows, grid.cols, section=sec, width=width_hu)
+
+    ensure_border_fill = getattr(getattr(doc, "styles", None), "ensure_border_fill",
+                                 None) or doc.ensure_border_fill
+    blank_bf = ensure_border_fill(active_borders=[])
+    line_w = f'{float(dia["line_width_mm"])} mm'
+    bf_cache: Dict[Tuple[Any, ...], str] = {}
+
+    def border_fill_for(cell: CellPlan) -> str:
+        key = (tuple(cell.borders), cell.fill)
+        if key not in bf_cache:
+            if not cell.borders and not cell.fill:
+                bf_cache[key] = blank_bf
+            else:
+                bf_cache[key] = ensure_border_fill(
+                    border_color=dia["line_color"] if not cell.fill else dia["box_border"],
+                    border_width=line_w,
+                    fill_color=cell.fill,
+                    active_borders=list(cell.borders),
+                )
+        return bf_cache[key]
+
+    # 전 셀을 투명으로 초기화한 뒤 계획된 셀만 덮어쓴다
+    for r in range(grid.rows):
+        for c in range(grid.cols):
+            tbl.set_cell_border_fill(r, c, blank_bf)
+
+    plan_cells: Dict[Tuple[int, int], Dict[str, Any]] = {}
+    for r in range(grid.rows):
+        for c in range(grid.cols):
+            plan_cells[(r, c)] = {
+                "width": mm(grid.col_widths_mm[c]),
+                "height": mm(grid.row_heights_mm[r]),
+                "char": "diagram",
+            }
+
+    for cell in grid.cells:
+        tbl.set_cell_border_fill(cell.row, cell.col, border_fill_for(cell))
+        if cell.text:
+            tbl.set_cell_text(cell.row, cell.col, cell.text)
+        span_w = sum(grid.col_widths_mm[cell.col:cell.col + cell.col_span])
+        span_h = sum(grid.row_heights_mm[cell.row:cell.row + cell.row_span])
+        plan_cells[(cell.row, cell.col)] = {
+            "width": mm(span_w), "height": mm(span_h), "char": cell.char,
+        }
+
+    # 상자(2열 병합)는 테두리·글자 설정 뒤에 병합한다
+    for cell in grid.cells:
+        if cell.col_span > 1 or cell.row_span > 1:
+            tbl.merge_cells(cell.row, cell.col,
+                            cell.row + cell.row_span - 1, cell.col + cell.col_span - 1)
+
+    table_plans.append({
+        "kind": "diagram",
+        "cells": plan_cells,
+        "width": width_hu,
+        "height": mm(grid.total_height_mm),
+    })
+
+    if grid.title:
+        doc.add_paragraph(grid.title, section=sec,
+                          style_id_ref=ids.styles["table_mid"],
+                          char_pr_id_ref=ids.chars["table_mid"],
+                          para_pr_id_ref=ids.paras["table_mid"])
+
+
+# ──────────────────────────────────────────────────────────────
+# 이미지 렌더(폴백)
+# ──────────────────────────────────────────────────────────────
+#: 이미지 렌더에 쓸 한글 글꼴 후보(설치된 첫 번째를 사용)
+KOREAN_FONT_CANDIDATES = [
+    "Noto Sans CJK KR", "Noto Sans KR", "NanumGothic", "NanumBarunGothic",
+    "Malgun Gothic", "AppleGothic", "UnDotum", "Baekmuk Gulim",
+]
+
+
+def _apply_korean_font(matplotlib, warnings: Optional[List[str]] = None) -> None:
+    """설치된 한글 글꼴을 찾아 matplotlib 기본 글꼴로 지정."""
+    try:
+        from matplotlib import font_manager
+        available = {f.name for f in font_manager.fontManager.ttflist}
+    except Exception:
+        available = set()
+    for name in KOREAN_FONT_CANDIDATES:
+        if name in available:
+            matplotlib.rcParams["font.family"] = name
+            matplotlib.rcParams["axes.unicode_minus"] = False
+            return
+    if warnings is not None:
+        warnings.append(
+            "이미지 도식: 한글 글꼴을 찾지 못해 글자가 깨질 수 있음 "
+            "(예: apt install fonts-nanum 또는 pip install koreanize-matplotlib)"
+        )
+
+
+def render_png(spec: DiagramSpec, profile: Dict[str, Any],
+               path: Optional[str] = None,
+               warnings: Optional[List[str]] = None) -> Optional[str]:
+    """matplotlib으로 PNG를 그린다. 사용 불가하면 None."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Rectangle
+    except Exception:
+        return None
+
+    _apply_korean_font(matplotlib, warnings)
+
+    spec = ensure_spec(spec)
+    dia = profile["diagram"]
+    grid = build_grid(spec, profile, force=True)
+
+    width_in = max(grid.total_width_mm, 40) / 25.4
+    height_in = max(grid.total_height_mm, 20) / 25.4
+    fig, ax = plt.subplots(figsize=(width_in, height_in), dpi=200)
+    ax.set_xlim(0, grid.total_width_mm)
+    ax.set_ylim(0, grid.total_height_mm)
+    ax.invert_yaxis()
+    ax.axis("off")
+
+    x_edges = [0.0]
+    for w in grid.col_widths_mm:
+        x_edges.append(x_edges[-1] + w)
+    y_edges = [0.0]
+    for h in grid.row_heights_mm:
+        y_edges.append(y_edges[-1] + h)
+
+    font_pt = float(dia["font_size_pt"])
+    for cell in grid.cells:
+        x0 = x_edges[cell.col]
+        x1 = x_edges[min(cell.col + cell.col_span, len(grid.col_widths_mm))]
+        y0 = y_edges[cell.row]
+        y1 = y_edges[min(cell.row + cell.row_span, len(grid.row_heights_mm))]
+        if cell.fill or set(cell.borders) == {"left", "right", "top", "bottom"}:
+            ax.add_patch(Rectangle(
+                (x0, y0), x1 - x0, y1 - y0,
+                facecolor=cell.fill or "none",
+                edgecolor=dia["box_border"], linewidth=0.8, zorder=2))
+        else:
+            for edge in cell.borders:
+                if edge == "right":
+                    ax.plot([x1, x1], [y0, y1], color=dia["line_color"], lw=0.8, zorder=1)
+                elif edge == "left":
+                    ax.plot([x0, x0], [y0, y1], color=dia["line_color"], lw=0.8, zorder=1)
+                elif edge == "top":
+                    ax.plot([x0, x1], [y0, y0], color=dia["line_color"], lw=0.8, zorder=1)
+                elif edge == "bottom":
+                    ax.plot([x0, x1], [y1, y1], color=dia["line_color"], lw=0.8, zorder=1)
+        if cell.text:
+            color = dia["root_color"] if cell.char == "diagram_root" else dia.get(
+                "box_color", "#000000")
+            ax.text((x0 + x1) / 2, (y0 + y1) / 2, cell.text, ha="center", va="center",
+                    fontsize=font_pt * 0.8, color=color, zorder=3)
+
+    if path is None:
+        tmp = tempfile.NamedTemporaryFile(prefix="hwpx_diagram_", suffix=".png", delete=False)
+        path = tmp.name
+        tmp.close()
+    fig.savefig(path, bbox_inches="tight", pad_inches=0.05, transparent=False)
+    plt.close(fig)
+    return path
