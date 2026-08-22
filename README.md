@@ -42,6 +42,26 @@ from google.colab import files; files.download('보고서.hwpx')
 
 `notebooks/colab_quickstart.ipynb`에 그대로 실행 가능한 노트북이 있다.
 
+### 웹 앱 (설치 없이, 브라우저에서)
+
+파이썬도 GitHub 계정도 필요 없다. 페이지를 열어 본문을 붙여 넣고 버튼을 누르면
+`.hwpx` 파일이 바로 내려받아진다.
+
+- **웹 페이지**: `docs/`를 GitHub Pages로 배포한다(Settings → Pages → Source: GitHub Actions).
+  배포되면 `https://<사용자>.github.io/<저장소>/` 에서 열린다
+- **단일 파일**: `python tools/build_standalone.py` → `dist/hwpx-studio.html` 한 개.
+  이메일로 보내거나 USB에 넣어 두고 인터넷 없이 열어도 그대로 동작한다
+  (CI의 `웹앱-단일파일` 아티팩트로도 받을 수 있다)
+
+변환은 **브라우저 안에서만** 일어난다. 입력한 글은 어디로도 전송되지 않는다.
+
+| 되는 것 | 안 되는 것 |
+|---|---|
+| 레벨 문단·자동 번호, 표, 조직도·절차도·매트릭스, 본문 검사, 내장 서식 3종 | 그림 삽입, 이미지 도식(표로 대체), 기존 문서 서식 추출 |
+
+브라우저 엔진(`docs/js/hwpx-studio.js`)은 파이썬 엔진을 이식한 것이다. 두 엔진이 같은
+결과를 내는지 CI에서 매번 대조한다(`tools/compare_js_python.py`).
+
 ### GitHub에서 바로 실행 (설치 없이)
 
 파이썬을 깔지 않고 GitHub 웹 화면에서 문서를 만들 수 있다. 셋 다 결과물은 실행 기록 아래
@@ -160,6 +180,7 @@ HWPX_LEGACY_GENERATOR=/path/to/hwpx_generator.py pytest tests/test_parity.py
 
 ## 문서
 
+- `docs/index.html` — 웹 앱(브라우저 변환기)
 - `docs/writing-guide.md` — 본문 작성법
 - `docs/diagram-guide.md` — 도식 작성법
 - `docs/profile-spec.md` — 프로파일 JSON 규격
