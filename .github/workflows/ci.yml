@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: 테스트 (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: pytest
+        run: pytest -q
+
+  examples:
+    name: 예제 문서 생성
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 한글 글꼴 설치 (이미지 도식용)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-nanum
+      - name: 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,image]"
+      - name: 예제 3종 생성
+        run: |
+          mkdir -p out
+          hwpx-studio build examples/input_outline.md   -p policy-default -o out/개조식_예제.hwpx --preview out/개조식_예제.html
+          hwpx-studio build examples/input_narrative.md -p narrative      -o out/서술식_예제.hwpx
+          hwpx-studio build examples/input_diagram.md   -p policy-default -o out/도식_예제.hwpx --no-lint
+          hwpx-studio diagram "대표 > 기획부, 운영부, 연구부" -o out/조직도.hwpx --title "조직 체계"
+      - name: 생성 결과 요약
+        run: |
+          {
+            echo "### 예제 문서 생성 결과"
+            echo
+            echo "| 파일 | 크기 |"
+            echo "|---|---|"
+            for f in out/*.hwpx; do
+              printf '| `%s` | %s bytes |\n' "$(basename "$f")" "$(stat -c%s "$f")"
+            done
+            echo
+            echo "**Artifacts**에서 내려받아 한글에서 열어볼 수 있습니다."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 예제-문서
+          path: out/
+          retention-days: 14

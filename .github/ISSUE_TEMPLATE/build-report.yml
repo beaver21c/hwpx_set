@@ -1,0 +1,59 @@
+name: 보고서 생성 요청
+description: 마커 텍스트를 붙여 넣으면 .hwpx로 만들어 이 이슈에 결과를 알려준다
+title: "[보고서] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        본문을 아래 칸에 붙여 넣고 제출하면 자동으로 한글 문서(.hwpx)를 만든다.
+        결과 파일은 실행 기록의 **Artifacts**에 올라오고, 이 이슈에 댓글로 링크가 달린다.
+
+        줄머리 마커: `#`=장, `##`=절, `□`=주제, `○`=주요, `-`=설명, `·`=세부, `※`=참고 (마커 뒤 공백 1칸)
+        자세한 규칙은 [docs/writing-guide.md](../blob/main/docs/writing-guide.md) 참조.
+  - type: textarea
+    id: body_text
+    attributes:
+      label: 본문 (마커 텍스트)
+      description: 표는 `| 구분 | 값 |`, 도식은 `:::diagram type=org` … `:::` 블록으로 쓴다
+      placeholder: |
+        # 사업 추진 현황
+        ## 추진 개요
+        □ 추진 배경 및 목적
+        ○ 제도 개선 요구가 지속 제기되어 개선 방안을 마련
+        - 기존 절차의 처리 기간이 길어 이용자 불편이 누적
+        - 담당 부서별 기준이 달라 안내가 일관되지 않음
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: profile
+    attributes:
+      label: 서식 프로파일
+      options:
+        - policy-default
+        - gov-3level
+        - narrative
+      default: 0
+    validations:
+      required: true
+  - type: input
+    id: output_name
+    attributes:
+      label: 결과 파일 이름
+      placeholder: 보고서.hwpx
+  - type: dropdown
+    id: diagram_render
+    attributes:
+      label: 도식 렌더 방식
+      options:
+        - 프로파일 기본
+        - table
+        - image
+      default: 0
+  - type: checkboxes
+    id: options
+    attributes:
+      label: 옵션
+      options:
+        - label: 본문 검사 경고도 오류로 취급(strict)
+        - label: HTML 근사 미리보기도 만들기

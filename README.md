@@ -42,6 +42,28 @@ from google.colab import files; files.download('보고서.hwpx')
 
 `notebooks/colab_quickstart.ipynb`에 그대로 실행 가능한 노트북이 있다.
 
+### GitHub에서 바로 실행 (설치 없이)
+
+파이썬을 깔지 않고 GitHub 웹 화면에서 문서를 만들 수 있다. 셋 다 결과물은 실행 기록 아래
+**Artifacts**에서 내려받는다.
+
+| 방법 | 어디서 | 쓸 때 |
+|---|---|---|
+| **이슈 폼** | Issues → New issue → *보고서 생성 요청* | 본문을 여러 줄 그대로 붙여 넣을 때 (권장) |
+| **Actions 폼** | Actions → *보고서 생성* → Run workflow | 저장소에 올려 둔 입력 파일로 만들 때 |
+| **서식 추출** | Actions → *서식 추출* → Run workflow | 기존 한글 문서에서 프로파일을 뽑을 때 |
+
+- 이슈 폼: 본문 칸에 마커 텍스트를 붙여 넣고 프로파일·파일 이름·옵션을 고르면 자동으로
+  생성되고, 결과 링크가 이슈에 댓글로 달린다. 본문을 고쳐 이슈를 수정하면 다시 만든다
+  (저장소 구성원이 연 이슈에만 반응한다)
+- Actions 폼: 입력 파일 경로·프로파일·도식 렌더 방식·`--strict` 여부를 고른다
+- 서식 추출: 기준 문서(`.hwpx`)를 저장소에 올린 뒤 경로를 넣으면, 프로파일 JSON과
+  **근거 리포트가 실행 요약 화면에 그대로 표시**된다
+- 워크플로 폼은 파일이 기본 브랜치(`main`)에 있어야 Actions 탭에 나타난다(GitHub 제약)
+
+CI(`.github/workflows/ci.yml`)는 푸시·PR마다 Python 3.10/3.12/3.13에서 테스트를 돌리고,
+예제 3종과 조직도를 실제로 생성해 Artifacts로 올린다.
+
 ### 다른 AI(ChatGPT·Gemini 등)로 본문만 받기
 
 ```bash
