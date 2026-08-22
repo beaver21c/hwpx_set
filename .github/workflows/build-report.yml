@@ -1,0 +1,75 @@
+name: 보고서 생성
+
+# Actions 탭 → '보고서 생성' → [Run workflow] 버튼으로 실행한다.
+# 여러 줄 본문을 그대로 붙여 넣으려면 이슈 폼(Issues → 보고서 생성 요청)을 쓰는 편이 낫다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      input_path:
+        description: "마커 텍스트 파일 경로 (저장소 안)"
+        required: true
+        default: "examples/input_outline.md"
+        type: string
+      profile:
+        description: "서식 프로파일"
+        required: true
+        default: "policy-default"
+        type: choice
+        options: ["policy-default", "gov-3level", "narrative"]
+      output_name:
+        description: "결과 파일 이름"
+        required: false
+        default: "보고서.hwpx"
+        type: string
+      diagram_render:
+        description: "도식 렌더 방식"
+        required: false
+        default: "프로파일 기본"
+        type: choice
+        options: ["프로파일 기본", "table", "image"]
+      strict:
+        description: "본문 검사 경고도 오류로 취급"
+        required: false
+        default: false
+        type: boolean
+      preview:
+        description: "HTML 근사 미리보기도 생성"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: hwpx 생성
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 한글 글꼴 설치 (이미지 도식용)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-nanum
+      - name: 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[image]"
+      - name: 생성
+        env:
+          INPUT_PATH: ${{ inputs.input_path }}
+          PROFILE: ${{ inputs.profile }}
+          OUTPUT_NAME: ${{ inputs.output_name }}
+          DIAGRAM_RENDER: ${{ inputs.diagram_render == '프로파일 기본' && '' || inputs.diagram_render }}
+          STRICT: ${{ inputs.strict }}
+          PREVIEW: ${{ inputs.preview }}
+          OUT_DIR: out
+        run: python .github/scripts/run_build.py
+      - uses: actions/upload-artifact@v4
+        if: always() && hashFiles('out/*') != ''
+        with:
+          name: 보고서
+          path: out/
+          retention-days: 14
