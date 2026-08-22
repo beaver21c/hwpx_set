@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hwpx-studio — 마커 텍스트로 한글 문서 만들기</title>
+<meta name="description" content="설치 없이 브라우저에서 마커 텍스트를 한글 문서(.hwpx)로 만듭니다. 파일은 기기 밖으로 나가지 않습니다.">
+<link rel="stylesheet" href="./css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📄</text></svg>">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>hwpx-studio</h1>
+    <p class="sub">마커를 붙인 평범한 텍스트를 <strong>한글 문서(.hwpx)</strong>로 바꿉니다.
+      브라우저 안에서만 처리되어 <strong>글이 서버로 전송되지 않습니다.</strong></p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="panel">
+    <div class="panel-head">
+      <h2>본문</h2>
+      <div class="head-actions">
+        <button type="button" class="ghost" data-sample="outline">개조식 예시</button>
+        <button type="button" class="ghost" data-sample="diagram">도식 예시</button>
+        <button type="button" class="ghost" data-sample="narrative">서술식 예시</button>
+      </div>
+    </div>
+    <textarea id="body-text" spellcheck="false" placeholder="# 사업 추진 현황
+## 추진 개요
+□ 추진 배경 및 목적
+○ 제도 개선 요구가 지속 제기되어 개선 방안을 마련
+- 기존 절차의 처리 기간이 길어 이용자 불편이 누적"></textarea>
+    <p class="hint" id="stat">0줄</p>
+  </section>
+
+  <section class="panel">
+    <h2>설정</h2>
+    <div class="fields">
+      <label>서식
+        <select id="profile"></select>
+      </label>
+      <label>파일 이름
+        <input id="filename" type="text" value="보고서.hwpx" spellcheck="false">
+      </label>
+    </div>
+    <div class="actions">
+      <button type="button" id="build" class="primary">한글 파일 만들기</button>
+      <button type="button" id="check" class="ghost">검사만</button>
+    </div>
+    <p class="status" id="status" role="status"></p>
+  </section>
+
+  <section class="panel" id="report-panel" hidden>
+    <h2>검사 결과</h2>
+    <ul class="issues" id="issues"></ul>
+  </section>
+
+  <section class="panel">
+    <h2>줄머리 마커</h2>
+    <table class="cheat">
+      <thead><tr><th>입력</th><th>결과</th><th>쓰임</th></tr></thead>
+      <tbody id="marker-table"></tbody>
+    </table>
+    <details>
+      <summary>표·도식 쓰는 법</summary>
+      <p><strong>표</strong> — 앞뒤에 빈 줄을 두고 파이프로 씁니다. 첫 행이 머리행입니다.</p>
+      <pre>| 구분 | 목표 | 실적 |
+|---|---|---|
+| 처리 기간 | 14일 | 11일 |</pre>
+      <p><strong>조직도·체계도</strong> — 2칸 들여쓰기가 한 단계 아래입니다.</p>
+      <pre>:::diagram type=org title="추진 체계"
+대표
+  기획부
+  운영부
+:::</pre>
+      <p><strong>절차도</strong> — 화살표 한 줄. 세로는 <code>direction=down</code>.</p>
+      <pre>:::diagram type=flow
+접수 → 검토 → 심의 → 통보
+:::</pre>
+      <p><strong>매트릭스</strong> — <code>type=matrix</code>에 표를 그대로 씁니다.</p>
+    </details>
+  </section>
+
+  <section class="panel notes">
+    <h2>알아둘 점</h2>
+    <ul>
+      <li>번호(Ⅰ. 1.)는 도구가 붙입니다. 본문에 직접 쓰지 마세요.</li>
+      <li>마커 뒤에는 <strong>공백 한 칸</strong>. 그래서 <code>-3% 감소</code>는 마커로 오인되지 않습니다.</li>
+      <li>글꼴은 문서에 이름만 기록됩니다. 그 글꼴이 없는 PC에서는 다른 글꼴로 보입니다.</li>
+      <li>그림 삽입과 이미지 도식은 웹에서 지원하지 않습니다(표로 대체). 필요하면 파이썬판을 쓰세요.</li>
+      <li>작성 중인 글은 이 브라우저에만 저장됩니다.</li>
+    </ul>
+  </section>
+</main>
+
+<footer class="wrap foot">
+  <p><a href="https://github.com/beaver21c/hwpx_set">GitHub 저장소</a> ·
+     <a href="https://github.com/beaver21c/hwpx_set/blob/main/docs/writing-guide.md">본문 작성법</a> ·
+     <a href="https://github.com/beaver21c/hwpx_set/blob/main/docs/diagram-guide.md">도식 작성법</a></p>
+</footer>
+
+<script type="module" src="./js/app.js"></script>
+</body>
+</html>

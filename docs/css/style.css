@@ -1,0 +1,136 @@
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #1a1c1f;
+  --muted: #5f6672;
+  --line: #dfe3e8;
+  --accent: #1f3864;
+  --accent-ink: #ffffff;
+  --warn-bg: #fff8e1;
+  --warn-line: #e6c34a;
+  --error-bg: #fdecec;
+  --error-line: #d96a6a;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --panel: #1c1f25;
+    --ink: #e8eaed;
+    --muted: #a0a7b4;
+    --line: #2c313a;
+    --accent: #7aa2e3;
+    --accent-ink: #10131a;
+    --warn-bg: #2e2716;
+    --warn-line: #7a6420;
+    --error-bg: #33191b;
+    --error-line: #8c3d3d;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+        "Malgun Gothic", "Noto Sans KR", sans-serif;
+}
+
+.wrap { max-width: 780px; margin: 0 auto; padding: 0 16px; }
+
+.top { padding: 28px 0 8px; }
+.top h1 { margin: 0; font-size: 1.6rem; letter-spacing: -0.02em; }
+.sub { margin: 6px 0 0; color: var(--muted); font-size: 0.95rem; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+}
+.panel h2 { margin: 0 0 12px; font-size: 1rem; letter-spacing: -0.01em; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.panel-head h2 { margin-bottom: 12px; }
+.head-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+textarea {
+  width: 100%;
+  min-height: 320px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.7 var(--mono);
+  resize: vertical;
+}
+textarea:focus, select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.fields { display: flex; gap: 12px; flex-wrap: wrap; }
+.fields label { flex: 1 1 220px; display: block; font-size: 0.85rem; color: var(--muted); }
+select, input[type="text"] {
+  width: 100%;
+  margin-top: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+button {
+  font: inherit;
+  border-radius: 8px;
+  padding: 11px 16px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: progress; }
+.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); flex: 1 1 200px; font-weight: 600; }
+.ghost { font-size: 0.85rem; padding: 7px 11px; color: var(--muted); }
+
+.hint, .status { margin: 8px 0 0; font-size: 0.85rem; color: var(--muted); }
+.status.ok { color: var(--accent); font-weight: 600; }
+.status.bad { color: #c0392b; }
+
+.issues { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.issues li {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border-left: 3px solid var(--warn-line);
+  background: var(--warn-bg);
+  font-size: 0.88rem;
+}
+.issues li.error { border-left-color: var(--error-line); background: var(--error-bg); }
+.issues .where { font-family: var(--mono); color: var(--muted); margin-right: 6px; }
+
+.cheat { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.cheat th, .cheat td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); }
+.cheat th { color: var(--muted); font-weight: 600; font-size: 0.8rem; }
+.cheat code { font-family: var(--mono); }
+
+details { margin-top: 12px; font-size: 0.9rem; }
+summary { cursor: pointer; color: var(--accent); }
+pre {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  overflow-x: auto;
+  font: 13px/1.6 var(--mono);
+}
+
+.notes ul { margin: 0; padding-left: 18px; font-size: 0.9rem; color: var(--muted); }
+.notes li { margin-bottom: 4px; }
+
+.foot { padding: 8px 16px 32px; font-size: 0.85rem; color: var(--muted); }
+.foot a { color: var(--accent); }

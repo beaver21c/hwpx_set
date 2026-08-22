@@ -13,3 +13,4 @@ venv/
 preview*.html
 *.png
 !docs/img/*.png
+dist/

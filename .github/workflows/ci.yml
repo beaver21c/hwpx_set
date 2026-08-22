@@ -72,3 +72,33 @@ jobs:
           name: 예제-문서
           path: out/
           retention-days: 14
+
+  web:
+    name: 웹 앱 (브라우저 엔진)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 설치
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]" playwright
+          python -m playwright install --with-deps chromium
+      - name: 자산이 최신인지 검사
+        run: python tools/build_web.py --check
+      - name: 브라우저 엔진 ↔ 파이썬 엔진 산출물 대조
+        run: python tools/compare_js_python.py
+      - name: 브라우저 UI 검사
+        run: pytest tests/test_web_ui.py -q
+      - name: 단일 파일 버전 생성
+        run: python tools/build_standalone.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 웹앱-단일파일
+          path: dist/hwpx-studio.html
+          retention-days: 14

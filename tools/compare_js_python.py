@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+"""브라우저 엔진(JS)과 파이썬 엔진의 산출물을 대조한다.
+
+같은 입력·프로파일로 두 엔진이 만든 hwpx의 **스타일 속성과 본문 텍스트**가
+같은지 본다(ID 번호는 달라도 된다). CI에서 돌린다.
+
+    python tools/compare_js_python.py
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+import sys
+import tempfile
+import zipfile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from hwpx.templates import blank_document_bytes  # noqa: E402
+
+from hwpx_studio.engine import build_document  # noqa: E402
+from hwpx_studio.parser import parse_file  # noqa: E402
+from hwpx_studio.profile import load_profile  # noqa: E402
+
+#: (입력, 프로파일). 이미지 렌더 도식(render=image)은 파이썬 전용이라 제외한다.
+CASES = [
+    ("examples/input_outline.md", "policy-default"),
+    ("tests/fixtures/diagram_table_only.md", "policy-default"),
+    ("examples/input_narrative.md", "narrative"),
+]
+
+
+def style_attributes(path: Path) -> dict:
+    """스타일명 → 서식 속성(글꼴·크기·굵기·색·정렬·줄간격·여백)."""
+    with zipfile.ZipFile(str(path)) as zf:
+        header = zf.read("Contents/header.xml").decode("utf-8")
+    chars = {m.group(1): m.group()
+             for m in re.finditer(r'<hh:charPr id="(\d+)".*?</hh:charPr>', header, re.S)}
+    paras = {m.group(1): m.group()
+             for m in re.finditer(r'<hh:paraPr id="(\d+)".*?</hh:paraPr>', header, re.S)}
+    fonts = dict(re.findall(r'<hh:font id="(\d+)" face="([^"]*)"', header))
+
+    out = {}
+    pattern = (r'<hh:style id="\d+" type="PARA" name="([^"]*)"[^>]*'
+               r'paraPrIDRef="(\d+)" charPrIDRef="(\d+)"')
+    for name, para_id, char_id in re.findall(pattern, header):
+        char, para = chars.get(char_id, ""), paras.get(para_id, "")
+        font_ref = re.search(r'<hh:fontRef hangul="(\d+)"', char)
+        margin = re.search(
+            r'<hc:intent value="(-?\d+)"[^>]*/><hc:left value="(\d+)"[^>]*/>'
+            r'<hc:right value="\d+"[^>]*/><hc:prev value="\d+"[^>]*/>'
+            r'<hc:next value="(\d+)"', para)
+        out[name] = {
+            "height": re.search(r'height="(\d+)"', char).group(1),
+            "bold": 'bold="1"' in char,
+            "color": re.search(r'textColor="([^"]*)"', char).group(1).upper(),
+            "font": fonts.get(font_ref.group(1)) if font_ref else None,
+            "align": re.search(r'horizontal="([^"]*)"', para).group(1) if para else None,
+            "line_spacing": re.search(r'<hh:lineSpacing[^>]*value="(\d+)"', para).group(1),
+            "margin": margin.groups() if margin else None,
+        }
+    return out
+
+
+def texts(path: Path) -> list:
+    with zipfile.ZipFile(str(path)) as zf:
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+    return re.findall(r"<hp:t>(.*?)</hp:t>", section)
+
+
+def table_shapes(path: Path) -> list:
+    """(행, 열, 셀 수) 목록 — 표·도식 구조 비교용."""
+    with zipfile.ZipFile(str(path)) as zf:
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+    out = []
+    for tbl in re.findall(r"<hp:tbl.*?</hp:tbl>", section, re.S):
+        head = re.search(r'rowCnt="(\d+)" colCnt="(\d+)"', tbl)
+        spans = re.findall(r'<hp:cellSpan colSpan="(\d+)"', tbl)
+        out.append((head.group(1), head.group(2), len(spans),
+                    sorted(set(spans), key=int)))
+    return out
+
+
+def build_with_js(template: Path, profile_path: Path, input_path: Path, out: Path) -> None:
+    script = f"""
+    const m = await import({json.dumps(str(ROOT / 'docs' / 'js' / 'hwpx-studio.js'))});
+    const {{ readFile, writeFile }} = await import('node:fs/promises');
+    const tpl = await readFile({json.dumps(str(template))});
+    const profile = JSON.parse(await readFile({json.dumps(str(profile_path))}, 'utf8'));
+    const text = await readFile({json.dumps(str(input_path))}, 'utf8');
+    const r = await m.buildFromText(tpl, profile, text);
+    await writeFile({json.dumps(str(out))}, r.bytes);
+    """
+    subprocess.run(["node", "--input-type=module", "-e", script], check=True)
+
+
+def main() -> int:
+    failures = []
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        template = tmp_path / "template.hwpx"
+        template.write_bytes(blank_document_bytes())
+
+        for rel_input, profile_name in CASES:
+            input_path = ROOT / rel_input
+            profile_path = ROOT / "hwpx_studio" / "profiles" / f"{profile_name}.json"
+            profile = load_profile(str(profile_path))
+
+            py_out = tmp_path / f"py_{Path(rel_input).stem}.hwpx"
+            parsed = parse_file(str(input_path), profile)
+            build_document(profile, parsed.items, str(py_out))
+
+            js_out = tmp_path / f"js_{Path(rel_input).stem}.hwpx"
+            build_with_js(template, profile_path, input_path, js_out)
+
+            label = f"{rel_input} ({profile_name})"
+            py_styles, js_styles = style_attributes(py_out), style_attributes(js_out)
+            for name, attrs in py_styles.items():
+                if name not in js_styles:
+                    failures.append(f"{label}: JS에 '{name}' 스타일 없음")
+                elif js_styles[name] != attrs:
+                    failures.append(f"{label}: '{name}' 서식 불일치\n"
+                                    f"    py={attrs}\n    js={js_styles[name]}")
+
+            py_texts = texts(py_out)
+            js_texts = [t for t in texts(js_out) if t]
+            py_texts = [t for t in py_texts if t]
+            if py_texts != js_texts:
+                only_py = [t for t in py_texts if t not in js_texts][:3]
+                only_js = [t for t in js_texts if t not in py_texts][:3]
+                failures.append(f"{label}: 본문 텍스트 불일치 "
+                                f"(py {len(py_texts)}개 / js {len(js_texts)}개)\n"
+                                f"    py에만={only_py}\n    js에만={only_js}")
+
+            py_tables, js_tables = table_shapes(py_out), table_shapes(js_out)
+            if py_tables != js_tables:
+                failures.append(f"{label}: 표·도식 구조 불일치\n"
+                                f"    py={py_tables}\n    js={js_tables}")
+
+            if not failures:
+                print(f"  ✔ {label}: 스타일 {len(py_styles)}개 · 텍스트 {len(py_texts)}개 · "
+                      f"표 {len(py_tables)}개 일치")
+
+    if failures:
+        print("\n브라우저 엔진과 파이썬 엔진의 산출물이 다릅니다:\n")
+        for item in failures:
+            print(f"  ✘ {item}")
+        return 1
+    print("\n두 엔진의 산출물이 일치합니다.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
