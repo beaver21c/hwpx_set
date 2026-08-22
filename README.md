@@ -115,7 +115,7 @@ hwpx-studio extract 기준문서.hwpx -o my.json --report report.md
 | 프로파일 주입 → 생성 → 재추출 왕복 일치 | 확인 (`tests/test_roundtrip.py`) |
 | 스타일 미사용 문서의 레벨 복원 | 확인(합성 데이터) |
 | 도식 표의 XML 구조·연결선 배치 | 확인 (`tests/test_diagram.py`) |
-| **한글 화면에서 한 변 테두리 연결선 표시** | **미확인** — `prototypes/README.md` 참조 |
+| 한글 화면에서 한 변 테두리 연결선 표시 | 확인(한글 모바일 뷰어) — `prototypes/README.md` |
 | 한글로 직접 작성한 실제 문서의 추출 정확도 | 미확인(검증용 파일 필요) |
 | 머리말·쪽번호 | 미구현 |
 

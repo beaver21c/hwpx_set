@@ -58,6 +58,28 @@ def test_connectors_join_parent_and_children(policy):
     assert {row for row, _ in verticals} <= {1, 2, 4, 5}
 
 
+def test_bus_touches_parent_vertical(policy):
+    """가로 버스는 부모 세로선이 끝나는 경계(연결 행의 위쪽 변)에 놓여야 한다.
+
+    프로토타입은 버스를 아래쪽 변에 그려 세로선과 한 행 어긋났고, 한글 화면에서
+    선이 끊겨 보였다. 그 회귀를 막는다.
+    """
+    grid = build_grid(parse_block("type=org", ORG.splitlines()), policy)
+    b = boxes(grid)
+    half = b["대표"].col_span // 2
+    parent_center = b["대표"].col + half - 1
+    connectors = [c for c in grid.cells if not c.text and not c.fill]
+
+    vertical_rows = {c.row for c in connectors
+                     if "right" in c.borders and c.col == parent_center}
+    bus_cells = [c for c in connectors if "top" in c.borders]
+    bus_rows = {c.row for c in bus_cells}
+
+    assert vertical_rows == {1}                      # 부모 상자 바로 아래 행
+    assert min(bus_rows) == max(vertical_rows) + 1   # 버스는 그 다음 행의 '위쪽 변'
+    assert all("bottom" not in c.borders for c in bus_cells)
+
+
 def test_all_columns_are_uniform_width(policy):
     grid = build_grid(parse_block("type=org", ORG.splitlines()), policy)
     assert len(set(round(w, 6) for w in grid.col_widths_mm)) == 1
