@@ -1,7 +1,7 @@
 name: 웹 앱 배포 (GitHub Pages)
 
 # docs/ 를 GitHub Pages로 배포한다.
-# 최초 1회, 저장소 Settings → Pages → Source를 'GitHub Actions'로 바꿔야 한다.
+# Pages가 꺼져 있으면 configure-pages가 켠다(enablement: true).
 
 on:
   push:
@@ -38,6 +38,8 @@ jobs:
           pip install -e .
           python tools/build_web.py --check
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true      # Pages가 꺼져 있으면 이 워크플로가 켠다
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs

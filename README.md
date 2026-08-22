@@ -47,8 +47,8 @@ from google.colab import files; files.download('보고서.hwpx')
 파이썬도 GitHub 계정도 필요 없다. 페이지를 열어 본문을 붙여 넣고 버튼을 누르면
 `.hwpx` 파일이 바로 내려받아진다.
 
-- **웹 페이지**: `docs/`를 GitHub Pages로 배포한다(Settings → Pages → Source: GitHub Actions).
-  배포되면 `https://<사용자>.github.io/<저장소>/` 에서 열린다
+- **웹 페이지**: `main`에 올라가면 GitHub Pages로 자동 배포된다(워크플로가 Pages를 켠다).
+  주소는 `https://<사용자>.github.io/<저장소>/`
 - **단일 파일**: `python tools/build_standalone.py` → `dist/hwpx-studio.html` 한 개.
   이메일로 보내거나 USB에 넣어 두고 인터넷 없이 열어도 그대로 동작한다
   (CI의 `웹앱-단일파일` 아티팩트로도 받을 수 있다)
