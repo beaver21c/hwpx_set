@@ -37,9 +37,28 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           python tools/build_web.py --check
-      - uses: actions/configure-pages@v5
+      - id: pages
+        uses: actions/configure-pages@v5
+        continue-on-error: true
         with:
-          enablement: true      # Pages가 꺼져 있으면 이 워크플로가 켠다
+          enablement: true      # 권한이 있으면 워크플로가 Pages를 켠다
+      - name: Pages가 꺼져 있을 때 안내
+        if: steps.pages.outcome == 'failure'
+        run: |
+          {
+            echo "## ⚠ GitHub Pages를 한 번 켜야 합니다"
+            echo
+            echo "이 워크플로의 토큰으로는 Pages를 켤 수 없습니다(권한 밖)."
+            echo "저장소 소유자가 **한 번만** 아래를 하면 이후로는 자동 배포됩니다."
+            echo
+            echo "1. 저장소 → **Settings** → 왼쪽 **Pages**"
+            echo "2. *Build and deployment* → Source를 **GitHub Actions**로"
+            echo "3. 이 워크플로를 다시 실행(Actions → 웹 앱 배포 → Run workflow)"
+            echo
+            echo "그때까지는 \`python tools/build_standalone.py\`로 만드는"
+            echo "단일 HTML(\`dist/hwpx-studio.html\`)을 쓰면 됩니다."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs
