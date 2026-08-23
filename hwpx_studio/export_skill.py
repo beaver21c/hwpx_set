@@ -39,7 +39,10 @@ def prompt_text(profile: Dict[str, Any]) -> str:
         "한 항목 한 줄, 단문은 온점 생략, 두 문장 이상이면 온점. 경어체 금지.\n"
         "표는 | 구분 | 값 | 형식, 앞뒤 빈 줄.\n"
         "조직도·체계도는 :::diagram type=org 와 ::: 사이에 2칸 들여쓰기 트리로, "
-        '절차도는 :::diagram type=flow 안에 "A → B → C" 한 줄로.\n'
+        '절차도는 :::diagram type=flow 안에 "A → B → C" 한 줄로, '
+        "전략체계도는 :::diagram type=strategy 안에 "
+        '"단이름 | 칸 | 칸" 줄로(라벨 없이 |로 시작하면 위 단의 다음 줄).\n'
+        "상자 색은 이름 뒤에 {fill=#RRGGBB color=#RRGGBB}로 적을 수 있음.\n"
         "확인되지 않은 수치·출처는 쓰지 말고 [확인 필요]로 표시.\n"
     )
 
@@ -76,20 +79,81 @@ description: >-
 
 {balance}
 
-## 4. 도식 예시
+## 4. 도식(조직도·체계도·절차도)
+
+도식은 한글에서 **편집 가능한 표**로 들어간다. 본문 아무 곳에나 블록으로 쓰면 된다.
+
+### 4.1 네 가지 유형
 
 ```
-:::diagram type=org title="추진 체계"
+:::diagram type=org title="추진 체계"      # 조직도·체계도(2칸 들여쓰기 = 한 단계 아래)
 총괄
   기획부
+    기획팀
   운영부
 :::
+
+:::diagram type=flow title="처리 절차"     # 절차도(세로는 direction=down)
+접수 → 검토 → 심의 → 통보
+:::
+
+:::diagram type=matrix title="역할 분담"   # 격자(첫 행·첫 열이 제목 칸)
+| | 중앙 | 지방 |
+| 기획 | 본부 | 지역본부 |
+:::
+
+:::diagram type=strategy title="경영전략 체계도"   # 단이 쌓이는 전략체계도
+미션 | 국민의 삶의 질 향상에 기여한다
+핵심가치 | 공감 | 안전 | 공정 | 신뢰
+4대 전략방향 | 분쟁해결 | 안전환경 | 거래환경 | 혁신경영
+| 세부과제1 | 세부과제2 | 세부과제3 | 세부과제4
+:::
 ```
+
+`strategy`에서 **라벨 없이 `|`로 시작한 줄은 위 단의 다음 줄**이다.
+
+### 4.2 색·선
+
+상자 뒤에 `{{ }}`로 적는다. 원본 도식의 색을 옮겨 담을 때 쓴다.
+
+```
+대표 {{fill=#C00000 color=#FFFFFF}}
+  기획부 {{fill=#2E75B6 color=#FFFFFF}}
+  감사실 {{fill=#FFF2CC border=#BF8F00 link=dash link_color=#808080}}
+```
+
+| 속성 | 뜻 |
+|---|---|
+| `fill` / `color` / `border` | 채움색 / 글자색 / 테두리색(`border=none`이면 상자 없이 글자만) |
+| `link` / `link_color` | 이 상자로 내려오는 연결선의 종류(`dash` `dot` `none`) / 색 |
+
+블록 첫 줄에 쓰면 그 도식 전체에 적용된다: `:::diagram type=org box_fill=#F2F2F2 line_style=dash`
+
+### 4.3 상자가 많을 때
+
+같은 단계 상자가 8개를 넘으면 **세로 목록형으로 자동 전환**된다(폭이 늘지 않는다).
+직접 지정하려면 `layout=side`, 가로를 고집하려면 `layout=wide`.
+
+### 4.4 이미 있는 도식을 옮길 때
+
+**Mermaid·SVG·HTML 파일이면** 도구가 읽는다. 색과 점선은 원본 값 그대로 가져온다.
+
+```bash
+python scripts/capture.py 조직도.svg --title "조직 체계"        # 도식 블록만 출력
+python scripts/capture.py 조직도.svg --hwpx 조직도.hwpx         # 문서까지 한 번에
+```
+
+**그림·캡처(PNG·스캔)뿐이면 도구가 읽지 못한다.** 이때는 **에이전트가 직접 그림을 보고**
+위 형식으로 받아쓴다. 상자의 계층·순서·색을 눈으로 읽어 블록으로 옮긴 뒤,
+사용자에게 그 블록을 보여 주고 확인을 받는다. 색은 원본과 비슷한 `#RRGGBB`로 적는다.
+
+받아쓴 결과는 그냥 텍스트라, 틀린 곳은 한 줄 고치면 된다.
 
 ## 5. 주의
 
 - 확인되지 않은 수치·출처는 `[확인 필요]`로 표시한다
-- 결과는 한글(뷰어)에서 한 번 확인할 것을 권한다
+- 도식의 계층을 **추정으로 채우지 않는다.** 원본에서 읽히지 않으면 사용자에게 묻는다
+- 결과는 한글(뷰어)에서 한 번 확인할 것을 권한다. 연결선·칸 폭은 화면에서 봐야 안다
 """
 
 BUILD_SCRIPT = '''#!/usr/bin/env python3
@@ -124,6 +188,47 @@ if __name__ == "__main__":
 '''
 
 
+CAPTURE_SCRIPT = '''#!/usr/bin/env python3
+"""남의 도식(Mermaid·SVG·HTML) → 도식 블록 [+ hwpx].
+
+    python scripts/capture.py 조직도.svg --title "조직 체계"
+    python scripts/capture.py 조직도.mmd --hwpx 조직도.hwpx
+
+그림(PNG·스캔)은 읽지 못한다 — 그때는 에이전트가 보고 받아쓴다(SKILL.md 4.4).
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+PROFILE = HERE.parent / "{profile_file}"
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("source", help="원본 파일(.mmd/.svg/.html/.md) 또는 -(표준입력)")
+    ap.add_argument("-o", "--out", help="도식 블록을 저장할 텍스트 파일")
+    ap.add_argument("--kind", default="auto",
+                    choices=["auto", "mermaid", "svg", "html"])
+    ap.add_argument("--title", default="")
+    ap.add_argument("--hwpx", help="곧바로 hwpx로도 생성")
+    args = ap.parse_args()
+
+    try:
+        from hwpx_studio.cli import run_capture
+    except ImportError:
+        print("hwpx-studio가 필요합니다: pip install hwpx-studio", file=sys.stderr)
+        return 2
+    return run_capture(args.source, args.out, args.kind, args.title,
+                       args.hwpx, str(PROFILE))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+
+
 def export_skill(profile: Dict[str, Any], out_dir: str,
                  slug: str = "hwpx-report", standalone: bool = False) -> List[str]:
     """스킬 폴더를 만들고 생성된 파일 목록을 돌려준다."""
@@ -142,7 +247,10 @@ def export_skill(profile: Dict[str, Any], out_dir: str,
     description = (
         f"{profile.get('name', '보고서')} 서식으로 한국어 보고서를 .hwpx로 생성한다. "
         f"마커({markers}) 텍스트를 쓰면 변환한다. "
-        "'한글 보고서', '.hwpx', '보고서로 만들어줘' 요청 시 사용."
+        "조직도·체계도·절차도·전략체계도를 한글에서 편집 가능한 **표**로 그려 넣고, "
+        "그림·Mermaid·SVG로 된 기존 도식을 읽어 같은 모양으로 옮긴다. "
+        "'한글 보고서', '.hwpx', '보고서로 만들어줘', '조직도', '체계도', '절차도', "
+        "'전략체계도', '이 도식을 한글로' 요청 시 사용."
     )
 
     (out / "SKILL.md").write_text(SKILL_TEMPLATE.format(
@@ -156,10 +264,13 @@ def export_skill(profile: Dict[str, Any], out_dir: str,
 
     (out / "scripts" / "build.py").write_text(
         BUILD_SCRIPT.format(profile_file=profile_file), encoding="utf-8")
+    (out / "scripts" / "capture.py").write_text(
+        CAPTURE_SCRIPT.format(profile_file=profile_file), encoding="utf-8")
     (out / "prompt.txt").write_text(prompt_text(profile), encoding="utf-8")
 
     created = [str(out / "SKILL.md"), str(out / profile_file),
-               str(out / "scripts" / "build.py"), str(out / "prompt.txt")]
+               str(out / "scripts" / "build.py"),
+               str(out / "scripts" / "capture.py"), str(out / "prompt.txt")]
 
     if standalone:
         pkg_dir = out / "scripts" / "hwpx_studio"

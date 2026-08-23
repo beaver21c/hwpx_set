@@ -120,12 +120,24 @@ from google.colab import files; files.download('보고서.hwpx')
 CI(`.github/workflows/ci.yml`)는 푸시·PR마다 Python 3.10/3.12/3.13에서 테스트를 돌리고,
 예제 3종과 조직도를 실제로 생성해 Artifacts로 올린다.
 
-### 다른 AI(ChatGPT·Gemini 등)로 본문만 받기
+### 에이전트 스킬로 쓰기 (Claude Code 등)
+
+보고서를 쓰다가 도식이 필요할 때 바로 표로 그려 넣도록, 스킬 폴더를 통째로 만들어 준다.
 
 ```bash
-hwpx-studio export-skill policy-default -o ./my-skill
-cat ./my-skill/prompt.txt        # 그대로 붙여넣으면 규칙에 맞는 본문이 나온다
+hwpx-studio export-skill policy-default -o ~/.claude/skills/hwpx-report-studio --standalone
 ```
+
+- `SKILL.md` — 마커 규칙 + **도식 네 가지(조직도·절차도·격자·전략체계도)**, 색 지정,
+  상자가 많을 때의 배치, 기존 도식을 옮기는 방법까지
+- `scripts/build.py` — 마커 텍스트 → hwpx
+- `scripts/capture.py` — Mermaid·SVG·HTML 도식 → 도식 블록(+hwpx)
+- `profile.json` — 서식. `--standalone`이면 엔진까지 동봉되어 `pip install` 없이 돈다
+  (`python-hwpx`만 있으면 된다)
+- `prompt.txt` — 다른 AI(ChatGPT·Gemini 등)에 그대로 붙여넣을 지시문
+
+**그림·캡처뿐인 도식**은 도구가 읽지 못한다. 그 경우 SKILL.md가 에이전트에게
+"직접 그림을 보고 형식대로 받아쓴 뒤 사용자 확인을 받으라"고 지시한다.
 
 ## 할 수 있는 일
 
