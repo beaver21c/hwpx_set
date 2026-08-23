@@ -2,6 +2,7 @@
 
 import { HWPX_PROFILES, HWPX_TEMPLATE_B64 } from '../assets.js';
 import { base64ToBytes, buildFromText, lintItems, mergeProfile, parseText } from './hwpx-studio.js';
+import { captureText, specToText } from './capture.js';
 
 const STORAGE_KEY = 'hwpx-studio.draft.v1';
 
@@ -193,6 +194,66 @@ async function runBuild() {
   }
 }
 
+const CAPTURE_SAMPLES = {
+  mermaid: `flowchart TD
+    A[○○위원회] --> B[기획분과]
+    A --> C[운영분과]
+    A -.-> D[자문단]
+    B --> E[정책팀]
+    B --> F[예산팀]
+    style A fill:#C00000,color:#FFFFFF
+    classDef body fill:#2E75B6,color:#FFFFFF
+    class B,C body
+    style D fill:#FFF2CC,stroke:#BF8F00`,
+  svg: `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300">
+  <rect x="230" y="20" width="140" height="40" fill="#C00000" stroke="#000000"/>
+  <text x="300" y="45" fill="#FFFFFF">위원회</text>
+  <rect x="60" y="140" width="140" height="40" fill="#2E75B6" stroke="#1F3864"/>
+  <text x="130" y="165" fill="#FFFFFF">기획분과</text>
+  <rect x="400" y="140" width="140" height="40" fill="#FFF2CC" stroke="#BF8F00"/>
+  <text x="470" y="165" fill="#000000">자문단</text>
+  <line x1="300" y1="60" x2="130" y2="140" stroke="#1F3864"/>
+  <path d="M300,60 L470,100 L470,140" stroke="#BF8F00" fill="none" stroke-dasharray="4 3"/>
+</svg>`,
+};
+
+/** 붙여 넣은 도식을 읽어 본문 끝에 도식 블록으로 덧붙인다. */
+function runCapture() {
+  const source = $('capture-text').value.trim();
+  const status = $('capture-status');
+  const say = (message, kind = '') => {
+    status.textContent = message;
+    status.className = `status ${kind}`.trim();
+  };
+  if (!source) { say('읽을 내용을 붙여 넣으세요.', 'bad'); return; }
+
+  let result;
+  try {
+    result = captureText(source, 'auto', $('capture-title').value.trim());
+  } catch (error) {
+    console.error(error);
+    say(`읽지 못했습니다: ${error.message}`, 'bad');
+    return;
+  }
+  if (!result.spec.lines.length) {
+    say(result.warnings[0] || '도식을 찾지 못했습니다.', 'bad');
+    return;
+  }
+
+  const block = specToText(result.spec);
+  const body = bodyText.value.replace(/\s*$/, '');
+  bodyText.value = `${body ? `${body}\n\n` : ''}${block}\n`;
+  bodyText.scrollTop = bodyText.scrollHeight;
+  updateStat();
+
+  const boxes = result.spec.type === 'flow'
+    ? result.spec.lines.join(' ').split('→').length
+    : result.spec.lines.length;
+  const note = result.warnings.length ? ` — ${result.warnings.join(' / ')}` : '';
+  say(`${result.source}에서 상자 ${boxes}개를 읽어 본문에 넣었습니다${note}`,
+    result.warnings.length ? '' : 'ok');
+}
+
 function init() {
   for (const [name, profile] of Object.entries(HWPX_PROFILES)) {
     const option = document.createElement('option');
@@ -213,6 +274,12 @@ function init() {
   bodyText.addEventListener('input', updateStat);
   profileSelect.addEventListener('change', () => { renderMarkers(); updateStat(); });
   $('build').addEventListener('click', runBuild);
+  $('capture-run').addEventListener('click', runCapture);
+  document.querySelectorAll('[data-capture-sample]').forEach((button) => {
+    button.addEventListener('click', () => {
+      $('capture-text').value = CAPTURE_SAMPLES[button.dataset.captureSample];
+    });
+  });
   $('check').addEventListener('click', runCheck);
   document.querySelectorAll('[data-sample]').forEach((button) => {
     button.addEventListener('click', () => {

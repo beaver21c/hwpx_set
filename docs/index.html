@@ -52,6 +52,32 @@
     <p class="status" id="status" role="status"></p>
   </section>
 
+  <section class="panel">
+    <div class="panel-head">
+      <h2>도식 가져오기</h2>
+      <div class="head-actions">
+        <button type="button" class="ghost" data-capture-sample="mermaid">Mermaid 예시</button>
+        <button type="button" class="ghost" data-capture-sample="svg">SVG 예시</button>
+      </div>
+    </div>
+    <p class="hint">다른 곳에 있는 조직도·절차도를 붙여 넣으면 본문에 넣을 도식 블록으로
+      바꿔 줍니다. <strong>Mermaid</strong>(위키·AI가 흔히 내놓는 형식), <strong>SVG</strong>,
+      그 둘이 든 <strong>HTML·마크다운</strong>을 읽습니다. 색과 점선은 원본에 적힌 값을 그대로 가져옵니다.</p>
+    <textarea id="capture-text" spellcheck="false" placeholder="flowchart TD
+    A[대표] --> B[기획부]
+    A --> C[운영부]
+    style A fill:#1F3864,color:#FFFFFF"></textarea>
+    <div class="fields">
+      <label>도식 제목
+        <input id="capture-title" type="text" placeholder="예: 추진 체계" spellcheck="false">
+      </label>
+    </div>
+    <div class="actions">
+      <button type="button" id="capture-run" class="primary">읽어서 본문에 넣기</button>
+    </div>
+    <p class="status" id="capture-status" role="status"></p>
+  </section>
+
   <section class="panel" id="report-panel" hidden>
     <h2>검사 결과</h2>
     <ul class="issues" id="issues"></ul>
@@ -80,6 +106,13 @@
 접수 → 검토 → 심의 → 통보
 :::</pre>
       <p><strong>매트릭스</strong> — <code>type=matrix</code>에 표를 그대로 씁니다.</p>
+      <p><strong>상자 색</strong> — 이름 뒤에 <code>{ }</code>로 적습니다.
+         상자가 많으면(8개 이상) 세로 목록형으로 자동 전환됩니다.</p>
+      <pre>:::diagram type=org
+대표 {fill=#C00000 color=#FFFFFF}
+  기획부 {fill=#2E75B6 color=#FFFFFF}
+  감사실 {link=dash}
+:::</pre>
     </details>
   </section>
 
@@ -90,6 +123,7 @@
       <li>마커 뒤에는 <strong>공백 한 칸</strong>. 그래서 <code>-3% 감소</code>는 마커로 오인되지 않습니다.</li>
       <li>글꼴은 문서에 이름만 기록됩니다. 그 글꼴이 없는 PC에서는 다른 글꼴로 보입니다.</li>
       <li>그림 삽입과 이미지 도식은 웹에서 지원하지 않습니다(표로 대체). 필요하면 파이썬판을 쓰세요.</li>
+      <li>도식 가져오기는 그림(PNG·스캔)은 읽지 못합니다. 구조가 글자로 남아 있는 것만 읽습니다.</li>
       <li>작성 중인 글은 이 브라우저에만 저장됩니다.</li>
     </ul>
   </section>

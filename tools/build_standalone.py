@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 
 #: 의존 순서대로 이어 붙인다(모듈 간 import는 제거된다)
-MODULES = ["js/zip.js", "js/hwpx-studio.js", "assets.js", "js/app.js"]
+MODULES = ["js/zip.js", "js/hwpx-studio.js", "js/capture.js", "assets.js", "js/app.js"]
 
 IMPORT_RE = re.compile(r"^\s*import\s[^;]*;\s*$", re.M)
 EXPORT_DEFAULT_RE = re.compile(r"^\s*export default .*;\s*$", re.M)
@@ -56,7 +56,11 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     html = build()
     out.write_text(html, encoding="utf-8")
-    print(f"생성: {out.relative_to(ROOT)} ({len(html.encode('utf-8')):,} bytes)")
+    try:
+        shown = out.relative_to(ROOT)
+    except ValueError:                              # 저장소 밖 경로로도 만들 수 있다
+        shown = out
+    print(f"생성: {shown} ({len(html.encode('utf-8')):,} bytes)")
     return 0
 
 

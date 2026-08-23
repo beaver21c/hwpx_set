@@ -26,6 +26,14 @@ from hwpx_studio.engine import build_document  # noqa: E402
 from hwpx_studio.parser import parse_file  # noqa: E402
 from hwpx_studio.profile import load_profile  # noqa: E402
 
+#: 도식 수집 대조 대상(파일, 형식, 제목)
+CAPTURE_CASES = [
+    ("examples/capture/org.mmd", "auto", "위원회 구성"),
+    ("examples/capture/process.mmd", "auto", "처리 절차"),
+    ("examples/capture/org.svg", "auto", "위원회 구성"),
+    ("tests/fixtures/capture_rows.svg", "auto", ""),
+]
+
 #: (입력, 프로파일). 이미지 렌더 도식(render=image)은 파이썬 전용이라 제외한다.
 CASES = [
     ("examples/input_outline.md", "policy-default"),
@@ -126,6 +134,36 @@ def build_with_js(template: Path, profile_path: Path, input_path: Path, out: Pat
     subprocess.run(["node", "--input-type=module", "-e", script], check=True)
 
 
+def capture_with_js(path: Path, kind: str, title: str) -> str:
+    script = f"""
+    const m = await import({json.dumps(str(ROOT / 'docs' / 'js' / 'capture.js'))});
+    const {{ readFile }} = await import('node:fs/promises');
+    const text = await readFile({json.dumps(str(path))}, 'utf8');
+    const r = m.captureText(text, {json.dumps(kind)}, {json.dumps(title)});
+    process.stdout.write(m.specToText(r.spec) + "\\n---\\n" + r.warnings.join("\\n"));
+    """
+    out = subprocess.run(["node", "--input-type=module", "-e", script],
+                         check=True, capture_output=True, text=True)
+    return out.stdout
+
+
+def compare_capture(failures: list) -> int:
+    """도식 수집도 두 엔진이 같은 블록을 내야 한다."""
+    from hwpx_studio.capture import capture as py_capture, spec_to_text
+
+    for rel, kind, title in CAPTURE_CASES:
+        path = ROOT / rel
+        result = py_capture(str(path), kind, title)
+        py_text = spec_to_text(result.spec) + "\n---\n" + "\n".join(result.warnings)
+        js_text = capture_with_js(path, kind, title)
+        if py_text.strip() != js_text.strip():
+            failures.append(f"capture {rel}: 결과 불일치\n"
+                            f"    --- py ---\n{py_text}\n    --- js ---\n{js_text}")
+        else:
+            print(f"  ✔ capture {rel}: 상자 {len(result.spec.lines)}줄 일치")
+    return 0
+
+
 def main() -> int:
     failures = []
     with tempfile.TemporaryDirectory() as tmp:
@@ -178,6 +216,8 @@ def main() -> int:
                 print(f"  ✔ {label}: 스타일 {len(py_styles)}개 · 텍스트 {len(py_texts)}개 · "
                       f"표 {len(py_tables)}개 · 셀 디자인 "
                       f"{sum(len(d) for d in py_designs)}종 일치")
+
+        compare_capture(failures)
 
     if failures:
         print("\n브라우저 엔진과 파이썬 엔진의 산출물이 다릅니다:\n")

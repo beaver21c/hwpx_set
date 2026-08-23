@@ -369,11 +369,10 @@ def from_svg(text: str, title: str = "") -> CaptureResult:
             boxes.append(_Box(_num(elem.get("x")), _num(elem.get("y")),
                               _num(elem.get("width")), _num(elem.get("height")),
                               style=_box_style(props)))
-        elif tag in ("text", "tspan"):
-            content = "".join(elem.itertext()).strip() if tag == "text" else (elem.text or "")
-            if content.strip():
-                texts.append((_num(elem.get("x")), _num(elem.get("y")),
-                              content.strip(), props))
+        elif tag == "text":                       # tspan은 itertext가 함께 훑는다
+            content = " ".join("".join(elem.itertext()).split())
+            if content:
+                texts.append((_num(elem.get("x")), _num(elem.get("y")), content, props))
         elif tag == "line":
             edges_raw.append(((_num(elem.get("x1")), _num(elem.get("y1"))),
                               (_num(elem.get("x2")), _num(elem.get("y2"))), props))

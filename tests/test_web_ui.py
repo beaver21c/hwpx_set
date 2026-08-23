@@ -131,3 +131,73 @@ def test_empty_input_is_rejected(browser, server):
     page.click("#build")
     page.wait_for_timeout(200)
     assert "본문을 입력" in page.inner_text("#status")
+
+
+def test_capture_inserts_a_diagram_block(browser, server):
+    """붙여 넣은 Mermaid를 읽어 본문에 도식 블록으로 넣는다."""
+    page, problems = open_page(browser, server)
+    page.click('[data-capture-sample="mermaid"]')
+    page.fill("#capture-title", "위원회 구성")
+    page.click("#capture-run")
+    page.wait_for_timeout(200)
+
+    body = page.input_value("#body-text")
+    assert ':::diagram type=org title="위원회 구성"' in body
+    assert "○○위원회 {fill=#C00000 color=#FFFFFF}" in body
+    assert "  기획분과 {fill=#2E75B6 color=#FFFFFF}" in body
+    assert "link=dash" in body                       # 점선 화살표가 옮겨진다
+    assert "상자 6개" in page.inner_text("#capture-status")
+    assert "도식" in page.inner_text("#stat")        # 본문 통계에 반영
+    assert problems == []
+
+
+def test_capture_of_svg_and_then_build(browser, server, tmp_path):
+    import zipfile
+
+    page, problems = open_page(browser, server)
+    page.click('[data-capture-sample="svg"]')
+    page.click("#capture-run")
+    page.wait_for_timeout(200)
+    assert "위원회" in page.input_value("#body-text")
+
+    with page.expect_download() as download:
+        page.click("#build")
+    saved = tmp_path / "captured.hwpx"
+    download.value.save_as(str(saved))
+    with zipfile.ZipFile(str(saved)) as zf:
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+        header = zf.read("Contents/header.xml").decode("utf-8")
+    assert "자문단" in section
+    assert "#C00000" in header                       # 원본 색이 문서까지 간다
+    assert "DASH" in header                          # 점선 연결선도
+    assert problems == []
+
+
+def test_capture_reports_unreadable_input(browser, server):
+    page, _ = open_page(browser, server)
+    page.fill("#capture-text", "이건 그냥 문장이다")
+    page.click("#capture-run")
+    page.wait_for_timeout(200)
+    status = page.inner_text("#capture-status")
+    assert "못" in status or "찾지" in status
+    assert ":::diagram" not in page.input_value("#body-text")
+
+
+def test_standalone_single_file_works(browser, tmp_path):
+    """단일 HTML(인터넷 없이 쓰는 버전)도 도식 가져오기가 동작한다."""
+    import subprocess
+    import sys
+
+    out = tmp_path / "hwpx-studio.html"
+    subprocess.run([sys.executable, str(ROOT / "tools" / "build_standalone.py"),
+                    "-o", str(out)], check=True, capture_output=True)
+
+    page = browser.new_page()
+    problems = []
+    page.on("pageerror", lambda e: problems.append(str(e)))
+    page.goto(out.as_uri(), wait_until="load")
+    page.click('[data-capture-sample="mermaid"]')
+    page.click("#capture-run")
+    page.wait_for_timeout(200)
+    assert ":::diagram" in page.input_value("#body-text")
+    assert problems == []
