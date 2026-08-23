@@ -13,8 +13,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +33,61 @@ HOUSE_RULES = {
     "head_pattern": {"L1": r"^【[^】]+】", "L2": r"^\([^)]+\)"},
     "period_policy": "single_sentence_no_period",
 }
+
+
+NAME_RE = re.compile(r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
+
+
+def check_skill(target: Path) -> list[str]:
+    """스킬이 등록될 수 있는 모양인지 본다. 문제를 문자열 목록으로 돌려준다.
+
+    프론트매터는 줄 단위로 읽히는 곳이 있어, `description: >-` 같은 여러 줄
+    표기는 스킬이 통째로 무시되는 원인이 된다. 그래서 한 줄인지까지 본다.
+    """
+    problems: list[str] = []
+    path = target / "SKILL.md"
+    if not path.exists():
+        return [f"SKILL.md가 없다: {path}"]
+
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        problems.append("첫 줄이 `---`가 아니다(프론트매터 없음)")
+        return problems
+    end = text.find("\n---\n", 3)
+    if end < 0:
+        problems.append("프론트매터를 닫는 `---`가 없다")
+        return problems
+
+    front = text[4:end]
+    fields: dict[str, str] = {}
+    for line in front.split("\n"):
+        if not line.strip():
+            continue
+        if line[0].isspace() or ":" not in line:
+            problems.append(f"프론트매터는 `키: 값` 한 줄이어야 한다: {line[:40]!r}")
+            continue
+        key, _, value = line.partition(":")
+        fields[key.strip()] = value.strip()
+
+    name = fields.get("name", "")
+    if not name:
+        problems.append("name이 없다")
+    elif not NAME_RE.match(name):
+        problems.append(f"name은 영소문자·숫자·하이픈만 쓴다: {name!r}")
+    elif name != target.name:
+        problems.append(f"name({name})과 폴더 이름({target.name})이 다르다")
+
+    desc = fields.get("description", "")
+    if not desc:
+        problems.append("description이 없다(여러 줄 `>-` 표기를 썼는지 확인)")
+    elif len(desc) > 1024:
+        problems.append(f"description이 너무 길다({len(desc)}자)")
+    elif desc.startswith((">", "|", "&", "*", "[", "{")):
+        problems.append(f"description이 YAML 특수 문자로 시작한다: {desc[:10]!r}")
+
+    for extra in set(fields) - {"name", "description", "license", "allowed-tools"}:
+        problems.append(f"알 수 없는 프론트매터 항목: {extra!r}")
+    return problems
 
 
 def build(out_dir: Path, base_profile: str = "policy-default") -> Path:
@@ -55,7 +112,17 @@ def build(out_dir: Path, base_profile: str = "policy-default") -> Path:
 
 INSTALL = """# 설치
 
-이 폴더를 통째로 스킬 폴더에 넣는다.
+쓰는 곳에 따라 방법이 다르다.
+
+## claude.ai / 데스크톱 앱 (스킬이 계정에 동기화되는 환경)
+
+`hwpx-report-studio.skill` 파일을 claude.ai 설정의 스킬 화면에서 **업로드**한다.
+`.zip`이 아니라 **`.skill` 확장자**여야 한다(내용이 같아도 확장자를 본다).
+`python skills/build.py --pack`으로 만든다.
+
+## Claude Code CLI (내 컴퓨터의 폴더를 읽는 환경)
+
+폴더를 통째로 넣고 Claude Code를 다시 연다.
 
 | 어디에 | 경로 |
 |---|---|
@@ -64,9 +131,11 @@ INSTALL = """# 설치
 
 ```bash
 cp -r hwpx-report-studio ~/.claude/skills/
+ls ~/.claude/skills/hwpx-report-studio/SKILL.md    # 이 경로에 바로 있어야 한다
 ```
 
-Claude Code를 다시 열면 목록에 잡힌다.
+압축을 풀 때 `hwpx-report-studio/hwpx-report-studio/`처럼 **한 겹 더 들어가면 안 잡힌다.**
+`SKILL.md`가 스킬 폴더 바로 아래 있어야 한다.
 
 ## 필요한 것
 
@@ -98,17 +167,43 @@ python scripts/build.py /tmp/t.md -o /tmp/시험.hwpx
 """
 
 
+def pack(target: Path) -> Path:
+    """claude.ai 스킬 업로드에 쓰는 `.skill` 파일(폴더를 담은 zip)."""
+    out = target.parent / f"{target.name}.skill"
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(target.rglob("*")):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(target.parent)
+            if "__pycache__" in rel.parts or path.suffix == ".pyc":
+                continue
+            zf.write(path, rel)
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("-o", "--out", default="dist", help="스킬 폴더를 만들 상위 경로")
     ap.add_argument("-p", "--profile", default="policy-default")
+    ap.add_argument("--pack", action="store_true",
+                    help="claude.ai에 올릴 .skill 파일도 만든다")
     args = ap.parse_args()
 
     out = Path(args.out).expanduser()
     out.mkdir(parents=True, exist_ok=True)
     target = build(out, args.profile)
+    problems = check_skill(target)
+    for problem in problems:
+        print(f"  ✘ {problem}")
+    if problems:
+        print("스킬이 등록되지 않을 수 있다. 위 항목을 고칠 것")
+        return 1
+
     files = sum(1 for _ in target.rglob("*") if _.is_file())
-    print(f"생성: {target} (파일 {files}개)")
+    print(f"생성: {target} (파일 {files}개) — 프론트매터 검사 통과")
+
+    if args.pack:
+        print(f"생성: {pack(target)}")
     return 0
 
 

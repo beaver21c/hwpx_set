@@ -49,8 +49,7 @@ def prompt_text(profile: Dict[str, Any]) -> str:
 
 SKILL_TEMPLATE = """---
 name: {slug}
-description: >-
-  {description}
+description: {description}
 ---
 
 # {name}
@@ -257,6 +256,7 @@ def export_skill(profile: Dict[str, Any], out_dir: str,
         "'전략체계도', '이 도식을 한글로' 요청 시 사용."
     )
 
+    description = " ".join(description.split())        # 프론트매터는 한 줄이어야 한다
     (out / "SKILL.md").write_text(SKILL_TEMPLATE.format(
         slug=slug,
         name=profile.get("name", "보고서 생성기"),
