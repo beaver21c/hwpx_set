@@ -6,6 +6,7 @@
     hwpx-studio lint     input.md -p profile.json [--strict]
     hwpx-studio preview  out.hwpx -o preview.html
     hwpx-studio diagram  "대표 > 기획부, 운영부" -o org.hwpx
+    hwpx-studio capture  조직도.svg --hwpx 조직도.hwpx
     hwpx-studio export-skill profile.json -o ./my-skill [--standalone]
 """
 
@@ -191,6 +192,54 @@ def run_diagram(text: str, out_path: str, profile_arg: Optional[str],
     return 0
 
 
+def run_capture(source: str, out_path: Optional[str], kind: str, title: str,
+                 hwpx_path: Optional[str], profile_arg: Optional[str]) -> int:
+    """남의 도식(Mermaid·SVG·HTML)을 읽어 `:::diagram` 블록으로 옮긴다."""
+    import sys
+
+    from .capture import capture, capture_text
+
+    if source == "-":
+        result = capture_text(sys.stdin.read(), kind, title)
+    else:
+        result = capture(source, kind, title)
+
+    for warn in result.warnings:
+        _echo(f"[경고] {warn}")
+    if not result.spec.lines:
+        _echo("도식을 읽지 못했다. --kind로 형식을 지정하거나 원본을 확인할 것")
+        return 2
+
+    text = result.to_text()
+    if result.spec.type == "flow":
+        from .diagram import _ARROW_SPLIT
+
+        boxes = sum(len([p for p in _ARROW_SPLIT.split(ln) if p.strip()])
+                    for ln in result.spec.lines)
+    else:
+        boxes = sum(1 for ln in result.spec.lines if ln.strip())
+    _echo(f"읽음: {result.source} · 상자 {boxes}개 · 유형 {result.spec.type}")
+
+    if out_path:
+        with open(out_path, "w", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+        _echo(f"생성: {out_path}")
+    else:
+        _echo("")
+        _echo(text)
+
+    if hwpx_path:
+        from .engine import build_document
+
+        profile = _load(profile_arg)
+        built = build_document(profile, [{"type": "diagram", "spec": result.spec.to_dict()}],
+                               hwpx_path)
+        for warn in built.warnings:
+            _echo(f"[경고] {warn}")
+        _echo(f"생성: {hwpx_path}")
+    return 0
+
+
 def run_export_skill(profile_arg: str, out_dir: str, slug: str = "hwpx-report",
                      standalone: bool = False) -> int:
     from .export_skill import export_skill
@@ -253,6 +302,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_dia.add_argument("--title", default="")
     p_dia.add_argument("--render", choices=["table", "image"])
 
+    p_cap = sub.add_parser("capture", help="남의 도식(Mermaid·SVG·HTML) → 도식 블록")
+    p_cap.add_argument("source", help="파일 경로, 또는 -(표준입력)")
+    p_cap.add_argument("-o", "--out", help="도식 블록을 저장할 텍스트 파일(없으면 화면 출력)")
+    p_cap.add_argument("--kind", default="auto",
+                       choices=["auto", "mermaid", "svg", "html"])
+    p_cap.add_argument("--title", default="")
+    p_cap.add_argument("--hwpx", help="읽은 도식을 곧바로 hwpx로도 생성")
+    p_cap.add_argument("-p", "--profile")
+
     p_exp = sub.add_parser("export-skill", help="프로파일 → 스킬 폴더")
     p_exp.add_argument("profile")
     p_exp.add_argument("-o", "--out", default="./my-skill")
@@ -281,6 +339,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if cmd == "diagram":
             return run_diagram(args.text, args.out, args.profile, args.dtype,
                                args.title, args.render)
+        if cmd == "capture":
+            return run_capture(args.source, args.out, args.kind, args.title,
+                               args.hwpx, args.profile)
         if cmd == "export-skill":
             return run_export_skill(args.profile, args.out, args.slug, args.standalone)
     except FileNotFoundError as exc:

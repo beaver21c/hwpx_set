@@ -59,7 +59,7 @@ from google.colab import files; files.download('보고서.hwpx')
 
 | 되는 것 | 안 되는 것 |
 |---|---|
-| 레벨 문단·자동 번호, 표, 조직도·절차도·매트릭스, 본문 검사, 내장 서식 3종 | 그림 삽입, 이미지 도식(표로 대체), 기존 문서 서식 추출 |
+| 레벨 문단·자동 번호, 표, 조직도·절차도·매트릭스, 상자별 색 지정, 본문 검사, 내장 서식 3종 | 그림 삽입, 이미지 도식(표로 대체), 기존 문서 서식 추출, 도식 가져오기(`capture`) |
 
 브라우저 엔진(`docs/js/hwpx-studio.js`)은 파이썬 엔진을 이식한 것이다. 두 엔진이 같은
 결과를 내는지 CI에서 매번 대조한다(`tools/compare_js_python.py`).
@@ -103,6 +103,7 @@ cat ./my-skill/prompt.txt        # 그대로 붙여넣으면 규칙에 맞는 �
 | `lint` | 본문 규칙 검사(계층 균형·온점·기호·빈 줄) |
 | `preview` | hwpx → HTML 근사 미리보기 |
 | `diagram` | 도식만 단독 생성 (`"대표 > 기획부, 운영부"`) |
+| `capture` | 남의 도식(Mermaid·SVG·HTML) → 도식 블록 (`--hwpx`로 문서까지) |
 | `export-skill` | 프로파일 → 에이전트 스킬 폴더(SKILL.md + 빌드 스크립트 + 지시문) |
 
 ### 본문 예시
@@ -166,6 +167,8 @@ hwpx-studio extract 기준문서.hwpx -o my.json --report report.md
 | 스타일 미사용 문서의 레벨 복원 | 확인(합성 데이터) |
 | 도식 표의 XML 구조·연결선 배치 | 확인 (`tests/test_diagram.py`) |
 | 노드별 배경색·글자색·테두리색·점선 연결선 | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
+| Mermaid·SVG·HTML 도식 읽기(구조·색·점선) | 확인 (`tests/test_capture.py`) |
+| 그림(PNG·스캔)에서 도식 읽기 | 미구현 — AI에게 받아쓰게 하는 우회는 `docs/diagram-guide.md` §4 |
 | 한글 화면에서 한 변 테두리 연결선 표시 | 확인(한글 모바일 뷰어) — `prototypes/README.md` |
 | 한글로 직접 작성한 실제 문서의 추출 정확도 | 확인(1건) — 7레벨 전부 복원, 아래 참조 |
 | 머리말·쪽번호 | 미구현 |
