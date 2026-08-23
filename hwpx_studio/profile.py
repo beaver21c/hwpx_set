@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -106,6 +107,8 @@ DEFAULT_PROFILE: Dict[str, Any] = {
     },
     "rules": {
         "min_children": {},
+        # 레벨 key → 본문 앞머리에 있어야 할 정규식(예: 네모의 【분류】). 없으면 검사 안 함
+        "head_pattern": {},
         "period_policy": "single_sentence_no_period",
     },
     # 문서 끝에 삽입할 서명 문단(선택). 공개 도구 기본값은 비활성.
@@ -263,6 +266,14 @@ def validate_profile(profile: Dict[str, Any]) -> List[str]:
             errors.append(f"rules.min_children의 {key!r}에 해당하는 레벨이 없음")
         if not isinstance(need, int) or need < 0:
             errors.append(f"rules.min_children[{key}]는 0 이상 정수여야 함")
+
+    for key, pattern in (profile.get("rules", {}).get("head_pattern") or {}).items():
+        if key not in seen_keys:
+            errors.append(f"rules.head_pattern의 {key!r}에 해당하는 레벨이 없음")
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            errors.append(f"rules.head_pattern[{key}]가 정규식이 아님: {exc}")
     return errors
 
 

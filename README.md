@@ -139,6 +139,15 @@ hwpx-studio export-skill policy-default -o ~/.claude/skills/hwpx-report-studio -
 **그림·캡처뿐인 도식**은 도구가 읽지 못한다. 그 경우 SKILL.md가 에이전트에게
 "직접 그림을 보고 형식대로 받아쓴 뒤 사용자 확인을 받으라"고 지시한다.
 
+집필 규칙까지 얹은 스킬(KIHASA 작업 절차·머릿글 규칙 포함)은 `skills/`에 있다.
+
+```bash
+python skills/build.py -o ~/.claude/skills      # 조립 + 설치
+```
+
+`skills/hwpx-report-studio/`의 손으로 쓴 SKILL.md·reference를 내보낸 뼈대 위에 덮어씌운다.
+엔진이 바뀌어도 다시 만들면 되고, 집필 규칙은 사람이 관리한다.
+
 ## 할 수 있는 일
 
 | 명령 | 하는 일 |
@@ -146,7 +155,7 @@ hwpx-studio export-skill policy-default -o ~/.claude/skills/hwpx-report-studio -
 | `build` | 마커 텍스트 → hwpx (검사 후 생성, `--preview`로 HTML 동시 생성) |
 | `extract` | 기존 hwpx → 프로파일 JSON + 근거 리포트 |
 | `init` | 프로파일 새로 만들기(내장 프로파일 기준) |
-| `lint` | 본문 규칙 검사(계층 균형·온점·기호·빈 줄) |
+| `lint` | 본문 규칙 검사(계층 균형·온점·기호·머릿글·빈 줄) |
 | `preview` | hwpx → HTML 근사 미리보기 |
 | `diagram` | 도식만 단독 생성 (`"대표 > 기획부, 운영부"`) |
 | `capture` | 남의 도식(Mermaid·SVG·HTML) → 도식 블록 (`--hwpx`로 문서까지) |
@@ -240,4 +249,5 @@ HWPX_LEGACY_GENERATOR=/path/to/hwpx_generator.py pytest tests/test_parity.py
 - `docs/diagram-guide.md` — 도식 작성법
 - `docs/diagram-capture-review.md` — 문서·웹 도식을 인식해 표로 재현하는 도구 검토
 - `docs/profile-spec.md` — 프로파일 JSON 규격
+- `skills/hwpx-report-studio/` — 에이전트 스킬(집필 규칙 + 도식)
 - `docs/spec.md` — 설계 명세(원안)

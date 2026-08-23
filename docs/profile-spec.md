@@ -22,7 +22,7 @@ hwpx-studio extract 기존문서.hwpx -o my.json      # 기존 hwpx에서 역생
 | `table` | 표 서식 + 표 셀 스타일 3종 |
 | `image` | 그림 기본 폭·글자처럼 취급 |
 | `diagram` | 도식 색·크기·렌더 방식 |
-| `rules` | 검사 규칙(`min_children`, `period_policy`) |
+| `rules` | 검사 규칙(`min_children`, `head_pattern`, `period_policy`) |
 | `signature` | 문서 끝 서명 문단(기본 빈 값 = 삽입 안 함) |
 
 ## 2. levels[]
@@ -80,6 +80,7 @@ hwpx-studio extract 기존문서.hwpx -o my.json      # 기존 hwpx에서 역생
 | 키 | 뜻 |
 |---|---|
 | `min_children` | `{"L1": 2}` — L1 아래 하위 항목 2개 이상 권장. lint의 `balance` 검사 |
+| `head_pattern` | `{"L1": "^【[^】]+】"}` — 그 레벨 본문 앞에 있어야 할 머릿글 정규식. lint의 `head` 검사. 비워 두면 검사하지 않는다 |
 | `period_policy` | `single_sentence_no_period`(기본) / `always_period` / `never_period` / `off` |
 
 ## 6. 검증
@@ -90,7 +91,8 @@ validate_profile(load_profile("my.json"))   # [] 이면 통과
 ```
 
 검증이 잡는 것: `mode` 값, 레벨 `key` 중복, `marker` 중복, 크기·글꼴·정렬 값,
-색상 형식, `anchor_level`·`min_children`이 없는 레벨을 가리키는 경우.
+색상 형식, `anchor_level`·`min_children`·`head_pattern`이 없는 레벨을 가리키는 경우,
+`head_pattern`이 정규식이 아닌 경우.
 
 ## 7. 추출(extract)이 판단하는 방식
 

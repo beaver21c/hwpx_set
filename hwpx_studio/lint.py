@@ -43,6 +43,7 @@ def lint_items(items: Sequence[Dict[str, Any]], profile: Dict[str, Any],
                  if str(lv.get("prefix", "")).startswith("AUTO_")}
     rules = profile.get("rules", {})
     min_children = rules.get("min_children") or {}
+    head_patterns = {k: v for k, v in (rules.get("head_pattern") or {}).items() if v}
     policy = rules.get("period_policy", "single_sentence_no_period")
 
     issues: List[Issue] = []
@@ -74,6 +75,13 @@ def lint_items(items: Sequence[Dict[str, Any]], profile: Dict[str, Any],
             issues.append(Issue(
                 "warn", line, "symbol",
                 f"본문에 레벨 기호 {stray!r}가 들어 있음 → 마커와 혼동 가능"))
+
+        # 머릿글 규칙(네모의 【】, 원의 () 처럼 레벨마다 정해 둔 앞머리)
+        pattern = head_patterns.get(key)
+        if pattern and not re.match(pattern, text):
+            issues.append(Issue(
+                "warn", line, "head",
+                f"{key}에 머릿글이 없음(규칙 {pattern}): {text[:20]}"))
 
         # 온점 규칙(제목 레벨은 제외)
         if key not in auto_keys:

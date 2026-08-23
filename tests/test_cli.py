@@ -139,3 +139,54 @@ def test_export_skill_standalone_bundles_package(tmp_path):
 
 def test_missing_file_is_reported(tmp_path, capsys):
     assert main(["build", str(tmp_path / "nope.md"), "-o", str(tmp_path / "x.hwpx")]) == 2
+
+
+def test_exported_build_script_supports_preview_and_strict(tmp_path):
+    """SKILL.md가 안내하는 옵션을 동봉 스크립트가 실제로 받아야 한다."""
+    import subprocess
+    import sys
+
+    target = tmp_path / "skill"
+    assert main(["export-skill", "policy-default", "-o", str(target),
+                 "--standalone"]) == 0
+
+    body = tmp_path / "input.md"
+    body.write_text("# 시험\n## 개요\n□ 첫 주제\n○ 첫 항목\n- 가\n- 나\n"
+                    "○ 둘째 항목\n- 다\n- 라\n□ 둘째 주제\n○ 셋째 항목\n- 마\n- 바\n"
+                    "○ 넷째 항목\n- 사\n- 아\n", encoding="utf-8")
+    out, preview = tmp_path / "r.hwpx", tmp_path / "r.html"
+    run = subprocess.run(
+        [sys.executable, str(target / "scripts" / "build.py"), str(body),
+         "-o", str(out), "--preview", str(preview)],
+        capture_output=True, text=True, cwd=str(target))
+    assert run.returncode == 0, run.stderr
+    assert out.exists() and preview.exists()
+
+
+def test_skill_build_script_assembles_the_house_skill(tmp_path):
+    """skills/build.py: 내보낸 뼈대 + 손으로 쓴 문서 + 집필 규칙."""
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    run = subprocess.run(
+        [sys.executable, str(root / "skills" / "build.py"), "-o", str(tmp_path)],
+        capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+
+    skill = tmp_path / "hwpx-report-studio"
+    for name in ("SKILL.md", "profile.json", "설치.md", "prompt.txt"):
+        assert (skill / name).exists(), f"{name} 없음"
+    for name in ("level-system.md", "hierarchy-rules.md", "examples.md", "diagram.md"):
+        assert (skill / "reference" / name).exists(), f"reference/{name} 없음"
+    assert (skill / "scripts" / "hwpx_studio" / "engine.py").exists()
+
+    profile = json.loads((skill / "profile.json").read_text(encoding="utf-8"))
+    assert profile["rules"]["head_pattern"]["L1"]          # 머릿글 규칙이 실려 있다
+    assert profile["rules"]["min_children"] == {"title2": 2, "L1": 2, "L2": 2}
+
+    skill_md = (skill / "SKILL.md").read_text(encoding="utf-8")
+    assert "표준 작업 절차" in skill_md and "계층 균형" in skill_md   # 기존 스킬에서 옮겨온 것
+    assert "type=strategy" in skill_md                               # 새로 생긴 것

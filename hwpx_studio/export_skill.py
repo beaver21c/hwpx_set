@@ -172,7 +172,10 @@ def main() -> int:
     ap.add_argument("input", help="마커 텍스트 파일")
     ap.add_argument("-o", "--out", default="report.hwpx")
     ap.add_argument("-p", "--profile", default=str(PROFILE))
-    ap.add_argument("--strict", action="store_true")
+    ap.add_argument("--strict", action="store_true",
+                    help="검사 경고도 오류로 취급해 중단")
+    ap.add_argument("--preview", help="HTML 근사 미리보기도 함께 생성")
+    ap.add_argument("--no-lint", action="store_true", help="본문 검사 건너뛰기")
     args = ap.parse_args()
 
     try:
@@ -180,7 +183,8 @@ def main() -> int:
     except ImportError:
         print("hwpx-studio가 필요합니다: pip install hwpx-studio", file=sys.stderr)
         return 2
-    return run_build(args.input, args.profile, args.out, strict=args.strict)
+    return run_build(args.input, args.profile, args.out, strict=args.strict,
+                     preview_path=args.preview, lint=not args.no_lint)
 
 
 if __name__ == "__main__":
