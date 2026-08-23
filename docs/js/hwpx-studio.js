@@ -347,11 +347,17 @@ export function splitAttrs(text) {
 function nodeStyle(attrs) {
   const style = {};
   for (const key of ['fill', 'color', 'border', 'link_color']) {
+    const raw = String(attrs[key] || '').trim().toLowerCase();
+    if (key === 'border' && (raw === 'none' || raw === '없음')) { style.border = 'none'; continue; }
     const color = normalizeColor(attrs[key]);
     if (color) style[key] = color;
   }
-  const link = normalizeLineType(attrs.link);
-  if (link) style.link = link;
+  const rawLink = String(attrs.link || '').trim().toLowerCase();
+  if (rawLink === 'none' || rawLink === '없음') style.link = 'none';
+  else {
+    const link = normalizeLineType(attrs.link);
+    if (link) style.link = link;
+  }
   return style;
 }
 
@@ -377,7 +383,7 @@ export function parseDiagramBlock(header, lines) {
   }
   let type = options.type || 'org';
   delete options.type;
-  if (!['org', 'flow', 'matrix'].includes(type)) type = 'org';
+  if (!['org', 'flow', 'matrix', 'strategy'].includes(type)) type = 'org';
   const title = options.title || '';
   delete options.title;
   const body = lines.map((l) => l.replace(/\s+$/, ''));
@@ -427,6 +433,7 @@ export function buildGrid(spec, profile, force = false) {
   let grid;
   if (spec.type === 'flow') grid = gridFlow(spec, effective);
   else if (spec.type === 'matrix') grid = gridMatrix(spec, effective);
+  else if (spec.type === 'strategy') grid = gridStrategy(spec, effective);
   else if (layout.startsWith('side')) grid = gridOrgSide(spec, effective);
   else {
     grid = gridOrg(spec, effective);
@@ -544,6 +551,154 @@ function gridOrg(spec, profile) {
   }
 
   return { rows, cols, colWidths: new Array(cols).fill(unit), rowHeights, cells, warnings, fallbackToImage: tooNarrow };
+}
+
+/** `라벨 | 칸 | 칸` 줄들을 단으로 묶는다 (diagram.py: parseBands 이식). */
+function parseBands(lines) {
+  const bands = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^\|[\s:|-]+\|?$/.test(line)) continue;
+    const parts = line.split('|').map((p) => p.trim());
+    while (parts.length > 1 && !parts[parts.length - 1]) parts.pop();
+    let head = parts[0];
+    let cells = parts.slice(1);
+    if (!cells.length) { head = ''; cells = [parts[0]]; }
+    const row = cells.map((c) => splitAttrs(c))
+      .filter(([text]) => text)
+      .map(([text, attrs]) => [text, nodeStyle(attrs)]);
+    if (!row.length) continue;
+    if (head) {
+      const [label, attrs] = splitAttrs(head);
+      bands.push({ label, labelStyle: nodeStyle(attrs), rows: [row] });
+    } else if (bands.length) {
+      bands[bands.length - 1].rows.push(row);
+    } else {
+      bands.push({ label: '', labelStyle: {}, rows: [row] });
+    }
+  }
+  return bands;
+}
+
+/** 전략체계도 (diagram.py: _grid_strategy 이식). */
+function gridStrategy(spec, profile) {
+  const dia = profile.diagram;
+  const warnings = [];
+  const bands = parseBands(spec.lines);
+  if (!bands.length) {
+    return { rows: 1, cols: 1, colWidths: [dia.col_width_mm], rowHeights: [dia.row_height_mm], cells: [], warnings: ['도식 내용이 비어 있음'], fallbackToImage: false };
+  }
+
+  const nCols = Math.max(...bands.flatMap((b) => b.rows.map((r) => r.length)), 1);
+  const hasLabel = bands.some((b) => b.label);
+
+  let boxCols = Number(dia.grid_resolution || 6);
+  boxCols = Math.max(2, boxCols + (boxCols % 2));
+  const half = boxCols / 2;
+
+  const maxW = Number(spec.options?.width || dia.max_width_mm);
+  const labelW = hasLabel ? Number(spec.options?.label_width || 22) : 0;
+  let [boxW, gap] = fitBoxWidth(nCols, profile, maxW - labelW);
+  let unit = boxW / boxCols;
+  const gapCols = Math.max(2, 2 * Math.max(1, Math.round(gap / (2 * unit))));
+  const stride = boxCols + gapCols;
+  const contentCols = stride * nCols - gapCols;
+  if (contentCols * unit > maxW - labelW) { unit = (maxW - labelW) / contentCols; boxW = unit * boxCols; }
+  if (boxW < MIN_BOX_WIDTH_MM) warnings.push(`한 단에 칸이 ${nCols}개여서 폭이 ${boxW.toFixed(1)}mm까지 좁아짐`);
+
+  const offset = hasLabel ? 1 : 0;
+  const colWidths = (hasLabel ? [labelW] : []).concat(new Array(contentCols).fill(unit));
+  const centre = (index, span = 1) => {
+    const first = offset + stride * index + half - 1;
+    const last = offset + stride * (index + span - 1) + half - 1;
+    return Math.floor((first + last) / 2);
+  };
+
+  const rowH = Number(dia.row_height_mm);
+  const rowGap = Number(dia.row_gap_mm);
+  const innerGap = Math.max(1, rowGap / 3);
+
+  const cells = [];
+  const rowHeights = [];
+  const bandRows = [];
+
+  bands.forEach((band, b) => {
+    if (b) {
+      if (band.labelStyle.link === 'none') rowHeights.push(innerGap);
+      else rowHeights.push(rowGap / 2, rowGap / 2);
+    }
+    const rowsHere = [];
+    band.rows.forEach((row, r) => {
+      if (r) rowHeights.push(innerGap);
+      rowsHere.push(rowHeights.length);
+      rowHeights.push(rowH);
+    });
+    bandRows.push(rowsHere);
+
+    band.rows.forEach((row, r) => {
+      const each = Math.max(1, Math.floor(nCols / row.length));
+      row.forEach(([text, style], i) => {
+        const start = offset + stride * (i * each);
+        const width = boxCols + stride * (each - 1);
+        const plain = style.border === 'none';
+        cells.push({
+          row: rowsHere[r], col: start, text, borders: plain ? [] : [...BOX_BORDERS],
+          fill: style.fill || (plain ? null : dia.box_fill),
+          char: 'diagram',
+          colSpan: Math.min(width, colWidths.length - start), rowSpan: 1,
+          textColor: style.color || null,
+          borderColor: plain ? null : (style.border || null),
+          borderType: null,
+        });
+      });
+    });
+
+    if (hasLabel && band.label) {
+      const style = band.labelStyle;
+      const plain = style.border === 'none';
+      cells.push({
+        row: rowsHere[0], col: 0, text: band.label,
+        borders: plain ? [] : [...BOX_BORDERS],
+        fill: style.fill || dia.root_fill,
+        char: 'diagram_root',
+        colSpan: 1, rowSpan: rowsHere[rowsHere.length - 1] - rowsHere[0] + 1,
+        textColor: style.color || null,
+        borderColor: plain ? null : (style.border || null),
+        borderType: null,
+      });
+    }
+  });
+
+  for (let b = 1; b < bands.length; b += 1) {
+    const upper = bands[b - 1];
+    const lower = bands[b];
+    if (lower.labelStyle.link === 'none') continue;
+    const rowB = bandRows[b][0] - 1;
+    const rowA = rowB - 1;
+    let lineType = lower.labelStyle.link;
+    lineType = (!lineType || lineType === 'none') ? null : lineType;
+    const colour = lower.labelStyle.link_color || null;
+
+    const topRow = upper.rows[upper.rows.length - 1];
+    const bottomRow = lower.rows[0];
+    const eachT = Math.max(1, Math.floor(nCols / topRow.length));
+    const eachB = Math.max(1, Math.floor(nCols / bottomRow.length));
+    const tops = topRow.map((_, i) => centre(i * eachT, eachT));
+    const bottoms = bottomRow.map((_, i) => centre(i * eachB, eachB));
+
+    for (const col of tops) addBorder(cells, rowA, col, 'right', colour, lineType);
+    const same = tops.length === bottoms.length && tops.every((c, i) => c === bottoms[i]);
+    if (!same) {
+      const spread = [...new Set([...tops, ...bottoms])].sort((x, y) => x - y);
+      for (let col = spread[0] + 1; col <= spread[spread.length - 1]; col += 1) {
+        addBorder(cells, rowB, col, 'top', colour, lineType);
+      }
+    }
+    for (const col of bottoms) addBorder(cells, rowB, col, 'right', colour, lineType);
+  }
+
+  return { rows: rowHeights.length, cols: colWidths.length, colWidths, rowHeights, cells, warnings, fallbackToImage: false };
 }
 
 /**

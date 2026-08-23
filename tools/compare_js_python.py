@@ -40,6 +40,7 @@ CASES = [
     ("tests/fixtures/diagram_table_only.md", "policy-default"),
     ("tests/fixtures/diagram_styled.md", "policy-default"),
     ("tests/fixtures/diagram_side.md", "policy-default"),
+    ("tests/fixtures/diagram_strategy.md", "policy-default"),
     ("examples/input_narrative.md", "narrative"),
 ]
 

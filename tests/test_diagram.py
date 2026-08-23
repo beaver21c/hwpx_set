@@ -311,3 +311,88 @@ def test_side_layout_reaches_the_document(policy, tmp_path):
         section = zf.read("Contents/section0.xml").decode("utf-8")
     assert "원장" in section and "기획팀" in section
     assert re.search(r'<hp:cellSpan colSpan="\d+" rowSpan="2"', section)
+
+
+# ──────────────────────────────────────────────────────────────
+# 전략체계도
+# ──────────────────────────────────────────────────────────────
+STRATEGY = """미션 {fill=#17375E color=#FFF} | 국민의 삶의 질 향상에 기여한다
+비전 | 공정하고 안전한 소비환경
+핵심가치 | 공감 | 안전 | 공정 | 신뢰
+경영목표 | 65,000건 {border=none} | 90% {border=none} | 900건 {border=none} | 1등급 {border=none}
+| 2,200건 {border=none} | 800건 {border=none} | 900건 {border=none} | 100% {border=none}
+4대 전략방향 {link=none} | 가 | 나 | 다 | 라"""
+
+
+def strategy_grid(policy, lines=None, header="type=strategy"):
+    return build_grid(parse_block(header, (lines or STRATEGY).splitlines()), policy)
+
+
+def test_strategy_lays_bands_out_with_a_label_column(policy):
+    b = boxes(strategy_grid(policy))
+    assert b["미션"].col == 0 and b["핵심가치"].col == 0     # 라벨은 왼쪽 열
+    assert b["공감"].col > 0 and b["신뢰"].col > b["공감"].col
+    assert b["미션"].row < b["공감"].row < b["가"].row      # 위에서 아래로
+
+
+def test_strategy_single_cell_band_spans_all_columns(policy):
+    grid = strategy_grid(policy)
+    b = boxes(grid)
+    assert b["국민의 삶의 질 향상에 기여한다"].col_span > b["공감"].col_span
+    assert b["국민의 삶의 질 향상에 기여한다"].col_span == grid.cols - 1
+
+
+def test_strategy_continuation_row_joins_the_band_above(policy):
+    """라벨 없이 `|`로 시작한 줄은 위 단의 다음 줄이다 — 라벨 칸이 그만큼 늘어난다."""
+    b = boxes(strategy_grid(policy))
+    assert b["경영목표"].row_span > 1
+    assert b["2,200건"].row > b["65,000건"].row
+    assert b["2,200건"].col == b["65,000건"].col          # 같은 열에 정렬
+
+
+def test_strategy_fan_out_draws_a_bus(policy):
+    """한 칸짜리 단에서 여러 칸짜리 단으로 갈 때만 가로선이 생긴다."""
+    grid = strategy_grid(policy)
+    bus = {(c.row, c.col) for c in grid.cells if not c.text and "top" in c.borders}
+    assert bus, "비전 → 핵심가치 가로 버스가 없음"
+    rows_with_bus = {row for row, _ in bus}
+    assert len(rows_with_bus) == 1                        # 갈래가 갈리는 곳 한 군데뿐
+
+
+def test_strategy_same_shape_bands_get_straight_lines_only(policy):
+    grid = strategy_grid(policy, lines="가 | A | B\n나 | C | D")
+    assert not [c for c in grid.cells if not c.text and "top" in c.borders]
+    assert [c for c in grid.cells if not c.text and "right" in c.borders]
+
+
+def test_strategy_link_none_skips_the_connector(policy):
+    grid = strategy_grid(policy)
+    b = boxes(grid)
+    between = [c for c in grid.cells if not c.text
+               and b["65,000건"].row < c.row < b["가"].row]
+    linked = [c for c in between if c.row > b["2,200건"].row]
+    assert not linked, "link=none인데 연결선이 그려짐"
+
+
+def test_strategy_border_none_makes_a_plain_text_cell(policy):
+    b = boxes(strategy_grid(policy))
+    assert b["65,000건"].borders == () and b["65,000건"].fill is None
+    assert b["공감"].borders and b["공감"].fill                # 나머지는 그대로 상자
+
+
+def test_strategy_reaches_the_document(policy, tmp_path):
+    out = tmp_path / "strategy.hwpx"
+    spec = parse_block("type=strategy", STRATEGY.splitlines())
+    build_document(policy, [{"type": "diagram", "spec": spec.to_dict()}], str(out))
+    with zipfile.ZipFile(str(out)) as zf:
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+        header = zf.read("Contents/header.xml").decode("utf-8")
+    for word in ("미션", "핵심가치", "65,000건", "4대 전략방향"):
+        assert word in section
+    assert "#17375E" in header                            # 지정한 라벨 색이 들어간다
+    assert re.search(r'<hp:cellSpan colSpan="\d+" rowSpan="[2-9]', section)  # 라벨 병합
+
+
+def test_strategy_empty_block_is_reported(policy):
+    grid = build_grid(parse_block("type=strategy", []), policy)
+    assert grid.warnings and not [c for c in grid.cells if c.text]

@@ -54,6 +54,8 @@ jobs:
           hwpx-studio build examples/input_narrative.md -p narrative      -o out/서술식_예제.hwpx
           hwpx-studio build examples/input_diagram.md        -p policy-default -o out/도식_예제.hwpx --no-lint
           hwpx-studio build examples/input_diagram_styled.md -p policy-default -o out/도식_색지정_예제.hwpx --no-lint
+          hwpx-studio build examples/input_diagram_side.md   -p policy-default -o out/도식_세로목록형_예제.hwpx --no-lint
+          hwpx-studio build examples/input_strategy.md       -p policy-default -o out/전략체계도_예제.hwpx --no-lint
           hwpx-studio diagram "대표 > 기획부, 운영부, 연구부" -o out/조직도.hwpx --title "조직 체계"
       - name: 도식 가져오기(capture) 예제
         run: |

@@ -90,7 +90,7 @@ from google.colab import files; files.download('보고서.hwpx')
 
 | 되는 것 | 안 되는 것 |
 |---|---|
-| 레벨 문단·자동 번호, 표, 조직도·절차도·매트릭스, 상자별 색 지정, **도식 가져오기(Mermaid·SVG)**, 본문 검사, 내장 서식 3종 | 그림 삽입, 이미지 도식(표로 대체), 기존 문서 서식 추출 |
+| 레벨 문단·자동 번호, 표, 조직도·절차도·매트릭스·전략체계도, 상자별 색 지정, **도식 가져오기(Mermaid·SVG)**, 본문 검사, 내장 서식 3종 | 그림 삽입, 이미지 도식(표로 대체), 기존 문서 서식 추출 |
 
 브라우저 엔진(`docs/js/hwpx-studio.js`)은 파이썬 엔진을 이식한 것이다. 두 엔진이 같은
 결과를 내는지 CI에서 매번 대조한다(`tools/compare_js_python.py`).
@@ -202,6 +202,7 @@ hwpx-studio extract 기준문서.hwpx -o my.json --report report.md
 | 도식 표의 XML 구조·연결선 배치 | 확인 (`tests/test_diagram.py`) |
 | 노드별 배경색·글자색·테두리색·점선 연결선 | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
 | 상자가 많을 때 세로 목록형 자동 전환(폭이 늘지 않음) | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
+| 전략체계도(미션·비전·핵심가치·전략과제 단 배치) | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
 | Mermaid·SVG·HTML 도식 읽기(구조·색·점선) | 확인 (`tests/test_capture.py`) |
 | 그림(PNG·스캔)에서 도식 읽기 | 미구현 — AI에게 받아쓰게 하는 우회는 `docs/diagram-guide.md` §4 |
 | 한글 화면에서 한 변 테두리 연결선 표시 | 확인(한글 모바일 뷰어) — `prototypes/README.md` |

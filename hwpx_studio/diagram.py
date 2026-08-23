@@ -29,7 +29,7 @@ ARROW_RIGHT = "→"
 ARROW_DOWN = "▼"
 _ARROW_SPLIT = re.compile(r"\s*(?:→|->|=>|▶|>)\s*")
 
-VALID_TYPES = ("org", "flow", "matrix")
+VALID_TYPES = ("org", "flow", "matrix", "strategy")
 
 #: 상자·연결선에 쓸 수 있는 선 종류(OWPML LineType). 짧은 이름 → OWPML 값
 LINE_TYPES = {
@@ -90,15 +90,27 @@ def split_attrs(text: str) -> Tuple[str, Dict[str, str]]:
 
 
 def node_style(attrs: Dict[str, str]) -> Dict[str, Any]:
-    """노드 속성 문자열 dict → 정규화된 스타일 dict(빈 값은 넣지 않는다)."""
+    """노드 속성 문자열 dict → 정규화된 스타일 dict(빈 값은 넣지 않는다).
+
+    `border=none`은 "테두리를 그리지 말라"는 뜻이라 색과 구분해 남긴다.
+    `link=none`도 마찬가지로 "이 단 위로는 연결선을 긋지 말라"는 뜻이다.
+    """
     style: Dict[str, Any] = {}
     for key in ("fill", "color", "border", "link_color"):
+        raw = (attrs.get(key) or "").strip().lower()
+        if key == "border" and raw in ("none", "없음"):
+            style["border"] = "none"
+            continue
         color = normalize_color(attrs.get(key))
         if color:
             style[key] = color
-    line = normalize_line_type(attrs.get("link"))
-    if line:
-        style["link"] = line
+    raw_link = (attrs.get("link") or "").strip().lower()
+    if raw_link in ("none", "없음"):
+        style["link"] = "none"
+    else:
+        line = normalize_line_type(attrs.get("link"))
+        if line:
+            style["link"] = line
     return style
 
 
@@ -312,6 +324,8 @@ def build_grid(spec: DiagramSpec, profile: Dict[str, Any], force: bool = False) 
         grid = _grid_flow(spec, profile)
     elif spec.type == "matrix":
         grid = _grid_matrix(spec, profile)
+    elif spec.type == "strategy":
+        grid = _grid_strategy(spec, profile)
     elif layout.startswith("side"):
         grid = _grid_org_side(spec, profile)
     else:
@@ -464,6 +478,178 @@ def _grid_org(spec: DiagramSpec, profile: Dict[str, Any]) -> GridPlan:
     return GridPlan(rows=rows, cols=cols, col_widths_mm=[unit] * cols,
                     row_heights_mm=row_heights, cells=cells, warnings=warnings,
                     fallback_to_image=too_narrow)
+
+
+@dataclass
+class _Band:
+    """전략체계도의 한 단(段). 왼쪽 라벨 하나 + 오른쪽 칸 여러 줄."""
+    label: str = ""
+    label_style: Dict[str, Any] = field(default_factory=dict)
+    rows: List[List[Tuple[str, Dict[str, Any]]]] = field(default_factory=list)
+
+
+def parse_bands(lines: Sequence[str]) -> List[_Band]:
+    """`라벨 | 칸 | 칸` 줄들을 단으로 묶는다.
+
+    라벨 자리가 비어 있는 줄(`| 칸 | 칸`)은 **바로 위 단의 다음 줄**이다.
+    """
+    bands: List[_Band] = []
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        if re.fullmatch(r"\|[\s:|-]+\|?", line):        # 마크다운 구분선은 버린다
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        while len(parts) > 1 and not parts[-1]:         # 마크다운식 끝 `|`
+            parts.pop()
+        head, cells = parts[0], parts[1:]
+        if not cells:                                   # 구분자 없는 한 칸짜리 줄
+            head, cells = "", [parts[0]]
+        row = [(text, node_style(attrs))
+               for text, attrs in (split_attrs(c) for c in cells) if text]
+        if not row:
+            continue
+        if head:
+            label, attrs = split_attrs(head)
+            bands.append(_Band(label=label, label_style=node_style(attrs), rows=[row]))
+        elif bands:
+            bands[-1].rows.append(row)                  # 이어지는 줄
+        else:
+            bands.append(_Band(rows=[row]))
+    return bands
+
+
+def _grid_strategy(spec: DiagramSpec, profile: Dict[str, Any]) -> GridPlan:
+    """전략체계도(미션·비전·핵심가치·전략방향·전략과제 …).
+
+    공공기관 경영전략 체계도에서 흔한 모양이다. 왼쪽에 단 이름, 오른쪽에 그 단의
+    칸들이 늘어서고, 단 사이를 연결선이 잇는다.
+
+    열은 org와 같은 요령으로 **균일한 폭의 잔 열**로 쪼갠다(칸 하나 =
+    `grid_resolution`개). 그래야 병합 구간의 한가운데가 열 경계가 되어 세로선이
+    칸 정중앙에 놓인다. 단 사이에는 절반짜리 행 두 개를 넣어, 가로 버스를 아래
+    행의 위쪽 변에 그리면 위에서 내려온 세로선과 정확히 맞물린다.
+    """
+    dia = profile["diagram"]
+    warnings: List[str] = []
+    bands = parse_bands(spec.lines)
+    if not bands:
+        return GridPlan(1, 1, [float(dia["col_width_mm"])], [float(dia["row_height_mm"])],
+                        warnings=["도식 내용이 비어 있음"])
+
+    n_cols = max((len(row) for band in bands for row in band.rows), default=1)
+    has_label = any(band.label for band in bands)
+
+    box_cols = int(dia.get("grid_resolution", 6) or 6)
+    box_cols = max(2, box_cols + (box_cols % 2))
+    half = box_cols // 2
+
+    max_w = float(spec.options.get("width") or dia["max_width_mm"])
+    label_w = float(spec.options.get("label_width") or 22) if has_label else 0.0
+    box_w, gap = _fit_box_width(n_cols, profile, max_w - label_w, warnings)
+    unit = box_w / box_cols
+    gap_cols = max(2, 2 * max(1, round(gap / (2 * unit))))
+    stride = box_cols + gap_cols
+    content_cols = stride * n_cols - gap_cols
+    if content_cols * unit > max_w - label_w:
+        unit = (max_w - label_w) / content_cols
+        box_w = unit * box_cols
+    if box_w < MIN_BOX_WIDTH_MM:
+        warnings.append(f"한 단에 칸이 {n_cols}개여서 폭이 {box_w:.1f}mm까지 좁아짐")
+
+    offset = 1 if has_label else 0
+    col_widths = ([label_w] if has_label else []) + [unit] * content_cols
+
+    def centre(index: int, span: int = 1) -> int:
+        """`index`번 칸(span개를 병합했다면 그 전체)의 중심 열."""
+        first = offset + stride * index + half - 1
+        last = offset + stride * (index + span - 1) + half - 1
+        return (first + last) // 2
+
+    row_h = float(dia["row_height_mm"])
+    row_gap = float(dia["row_gap_mm"])
+    inner_gap = max(1.0, row_gap / 3)
+
+    cells: List[CellPlan] = []
+    row_heights: List[float] = []
+    band_rows: List[List[int]] = []                     # 단마다 자기 칸이 놓인 행 번호
+
+    for b, band in enumerate(bands):
+        if b:                                           # 단 사이: 절반짜리 두 행
+            no_link = band.label_style.get("link") == "none"
+            if no_link:
+                row_heights.append(inner_gap)
+            else:
+                row_heights += [row_gap / 2, row_gap / 2]
+        rows_here: List[int] = []
+        for r, row in enumerate(band.rows):
+            if r:
+                row_heights.append(inner_gap)
+            rows_here.append(len(row_heights))
+            row_heights.append(row_h)
+        band_rows.append(rows_here)
+
+        for r, row in enumerate(band.rows):
+            each = max(1, n_cols // len(row))            # 칸이 적으면 넓게 편다
+            for i, (text, style) in enumerate(row):
+                start = offset + stride * (i * each)
+                width = box_cols + stride * (each - 1)
+                plain = style.get("border") == "none"   # 테두리 없는 글자 칸
+                borders = () if plain else ("left", "right", "top", "bottom")
+                cells.append(CellPlan(
+                    row=rows_here[r], col=start, text=text, borders=borders,
+                    fill=style.get("fill") or (None if plain else dia["box_fill"]),
+                    col_span=min(width, len(col_widths) - start),
+                    text_color=style.get("color"),
+                    border_color=(None if style.get("border") == "none"
+                                  else style.get("border")),
+                ))
+
+        if has_label and band.label:
+            first, last = rows_here[0], rows_here[-1]
+            style = band.label_style
+            cells.append(CellPlan(
+                row=first, col=0, text=band.label,
+                borders=() if style.get("border") == "none" else
+                ("left", "right", "top", "bottom"),
+                fill=style.get("fill") or dia["root_fill"],
+                char="diagram_root",
+                row_span=last - first + 1,
+                text_color=style.get("color"),
+                border_color=(None if style.get("border") == "none"
+                              else style.get("border")),
+            ))
+
+    # 단 사이 연결선
+    for b in range(1, len(bands)):
+        upper, lower = bands[b - 1], bands[b]
+        if lower.label_style.get("link") == "none":
+            continue
+        row_b = band_rows[b][0] - 1                     # 아래 절반 행
+        row_a = row_b - 1
+        line_type = lower.label_style.get("link")
+        line_type = None if line_type in (None, "none") else line_type
+        colour = lower.label_style.get("link_color")
+
+        top_row, bottom_row = upper.rows[-1], lower.rows[0]
+        each_t = max(1, n_cols // len(top_row))
+        each_b = max(1, n_cols // len(bottom_row))
+        tops = [centre(i * each_t, each_t) for i in range(len(top_row))]
+        bottoms = [centre(i * each_b, each_b) for i in range(len(bottom_row))]
+
+        for col in tops:
+            _add_border(cells, row_a, col, "right", colour, line_type)
+        if set(tops) != set(bottoms):                   # 갈래가 다를 때만 가로 버스
+            spread = sorted(set(tops) | set(bottoms))
+            for col in range(spread[0] + 1, spread[-1] + 1):
+                _add_border(cells, row_b, col, "top", colour, line_type)
+        for col in bottoms:
+            _add_border(cells, row_b, col, "right", colour, line_type)
+
+    return GridPlan(rows=len(row_heights), cols=len(col_widths),
+                    col_widths_mm=col_widths, row_heights_mm=row_heights,
+                    cells=cells, warnings=warnings)
 
 
 def _grid_org_side(spec: DiagramSpec, profile: Dict[str, Any]) -> GridPlan:
