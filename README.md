@@ -126,6 +126,7 @@ cat ./my-skill/prompt.txt        # 그대로 붙여넣으면 규칙에 맞는 �
 :::
 ```
 
+- 도식 상자에 색을 줄 수 있다: `대표 {fill=#C00000 color=#FFFFFF}`, 점선 연결선은 `{link=dash}`
 - 마커는 프로파일에서 바꿀 수 있고, 레벨 개수도 자유롭다
 - `Ⅰ.` `1.` 같은 번호는 도구가 붙인다
 - 자세한 규칙: `docs/writing-guide.md`, 도식: `docs/diagram-guide.md`
@@ -164,6 +165,7 @@ hwpx-studio extract 기준문서.hwpx -o my.json --report report.md
 | 프로파일 주입 → 생성 → 재추출 왕복 일치 | 확인 (`tests/test_roundtrip.py`) |
 | 스타일 미사용 문서의 레벨 복원 | 확인(합성 데이터) |
 | 도식 표의 XML 구조·연결선 배치 | 확인 (`tests/test_diagram.py`) |
+| 노드별 배경색·글자색·테두리색·점선 연결선 | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
 | 한글 화면에서 한 변 테두리 연결선 표시 | 확인(한글 모바일 뷰어) — `prototypes/README.md` |
 | 한글로 직접 작성한 실제 문서의 추출 정확도 | 확인(1건) — 7레벨 전부 복원, 아래 참조 |
 | 머리말·쪽번호 | 미구현 |

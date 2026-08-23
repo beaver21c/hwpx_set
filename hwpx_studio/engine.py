@@ -112,8 +112,13 @@ def _next_id(xml: str, item_tag: str, default: int = 0) -> int:
     return max(ids) + 1 if ids else default
 
 
-def plan_ids(header_xml: str, profile: Dict[str, Any]) -> IdMap:
-    """템플릿 header.xml을 읽어 충돌하지 않는 ID를 순차 할당한다."""
+def plan_ids(header_xml: str, profile: Dict[str, Any],
+             extra_keys: Optional[Sequence[str]] = None) -> IdMap:
+    """템플릿 header.xml을 읽어 충돌하지 않는 ID를 순차 할당한다.
+
+    ``extra_keys``는 도식의 노드별 글자색처럼 본문을 보고서야 알 수 있는
+    추가 서식(`dia:#RRGGBB`)이다.
+    """
     char_id = _next_id(header_xml, "hh:charPr")
     para_id = _next_id(header_xml, "hh:paraPr")
     bf_id = _next_id(header_xml, "hh:borderFill", 1)
@@ -121,6 +126,7 @@ def plan_ids(header_xml: str, profile: Dict[str, Any]) -> IdMap:
     ids = IdMap()
     keys = [lv["key"] for lv in profile["levels"]]
     keys += ["table_top", "table_mid", "table_left", "body", "diagram", "diagram_root"]
+    keys += list(extra_keys or [])
 
     for key in keys:
         ids.chars[key] = char_id
@@ -146,13 +152,23 @@ def plan_ids(header_xml: str, profile: Dict[str, Any]) -> IdMap:
     # 도식 셀은 별도 스타일 없이 표(중간) 스타일을 쓴다
     ids.styles["diagram"] = ids.styles["table_mid"]
     ids.styles["diagram_root"] = ids.styles["table_mid"]
+    for key in (extra_keys or []):
+        ids.styles[key] = ids.styles["table_mid"]
     return ids
 
 
 # ──────────────────────────────────────────────────────────────
 # 템플릿 패치
 # ──────────────────────────────────────────────────────────────
-def _style_cfgs(profile: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any]]]:
+def _diagram_text_cfg(profile: Dict[str, Any], color: str) -> Dict[str, Any]:
+    dia = profile["diagram"]
+    return {"name": f"도식({color})", "size_pt": dia["font_size_pt"], "bold": True,
+            "font": "bold", "color": color, "left_pt": 0, "indent_pt": 0,
+            "spacing_below_pt": 0, "line_spacing": 130, "align": "CENTER"}
+
+
+def _style_cfgs(profile: Dict[str, Any],
+                extra_keys: Optional[Sequence[str]] = None) -> List[Tuple[str, Dict[str, Any]]]:
     """(key, 스타일 설정) 목록. header 주입 순서와 동일."""
     tbl = profile["table"]
     dia = profile["diagram"]
@@ -171,10 +187,13 @@ def _style_cfgs(profile: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any]]]:
         "color": dia.get("root_color", "#FFFFFF"), "left_pt": 0, "indent_pt": 0,
         "spacing_below_pt": 0, "line_spacing": 130, "align": "CENTER",
     }))
+    for key in (extra_keys or []):
+        out.append((key, _diagram_text_cfg(profile, key.split(":", 1)[-1])))
     return out
 
 
-def patch_template_bytes(profile: Dict[str, Any], ids: IdMap) -> bytes:
+def patch_template_bytes(profile: Dict[str, Any], ids: IdMap,
+                         extra_keys: Optional[Sequence[str]] = None) -> bytes:
     original = blank_document_bytes()
     buf_in, buf_out = BytesIO(original), BytesIO()
     with zipfile.ZipFile(buf_in, "r") as zi, \
@@ -182,7 +201,8 @@ def patch_template_bytes(profile: Dict[str, Any], ids: IdMap) -> bytes:
         for item in zi.infolist():
             data = zi.read(item.filename)
             if item.filename == "Contents/header.xml":
-                data = patch_header(data.decode("utf-8"), profile, ids).encode("utf-8")
+                data = patch_header(data.decode("utf-8"), profile, ids,
+                                    extra_keys).encode("utf-8")
             elif item.filename == "Contents/section0.xml":
                 data = _patch_section_margins(data.decode("utf-8"), profile).encode("utf-8")
             zo.writestr(
@@ -203,7 +223,8 @@ def _patch_section_margins(xml: str, profile: Dict[str, Any]) -> str:
     return re.sub(r'<hp:margin header="[^"]*"[^/]*/>', new_margin, xml)
 
 
-def patch_header(x: str, profile: Dict[str, Any], ids: IdMap) -> str:
+def patch_header(x: str, profile: Dict[str, Any], ids: IdMap,
+                 extra_keys: Optional[Sequence[str]] = None) -> str:
     fonts = profile["fonts"]
 
     # (A) 폰트 교체: font id=0 → bold, id=1 → light (모든 lang 그룹에 적용)
@@ -213,7 +234,7 @@ def patch_header(x: str, profile: Dict[str, Any], ids: IdMap) -> str:
     # (B) 바탕글(paraPr id=0) 줄간격을 body 설정에 맞춤
     x = _update_para_pr_line_spacing(x, 0, int(profile["body"].get("line_spacing", 160)))
 
-    cfgs = _style_cfgs(profile)
+    cfgs = _style_cfgs(profile, extra_keys)
 
     # (C) charProperties 주입
     new_chars = "".join(
@@ -258,7 +279,7 @@ def patch_header(x: str, profile: Dict[str, Any], ids: IdMap) -> str:
     # (F) styles 전체 교체(바탕글 + 프로파일 스타일)
     style_items: List[Tuple[str, Dict[str, Any], int]] = []
     for key, cfg in cfgs:
-        if key in ("diagram", "diagram_root"):
+        if key in ("diagram", "diagram_root") or key.startswith("dia:"):
             continue
         style_items.append((key, cfg, ids.styles[key]))
     max_sid = max(sid for _, _, sid in style_items) if style_items else 0
@@ -359,8 +380,9 @@ def build_document(
     warns: List[str] = []
 
     header_xml = _template_header_xml()
-    ids = plan_ids(header_xml, profile)
-    patched = patch_template_bytes(profile, ids)
+    extra_keys = _diagram_text_keys(items, profile, warns)
+    ids = plan_ids(header_xml, profile, extra_keys)
+    patched = patch_template_bytes(profile, ids, extra_keys)
 
     doc = HwpxDocument.open(BytesIO(patched))
     sec = doc.sections[0]
@@ -398,6 +420,24 @@ def build_document(
         with open(out_path, "wb") as fh:
             fh.write(data)
     return BuildResult(data=data, warnings=warns, path=out_path)
+
+
+def _diagram_text_keys(items: Sequence[Dict[str, Any]], profile: Dict[str, Any],
+                       warns: List[str]) -> List[str]:
+    """본문의 도식들이 쓰는 글자색을 모아 charPr key 목록으로 만든다."""
+    keys: List[str] = []
+    for item in items:
+        if item.get("type") != "diagram":
+            continue
+        try:
+            colors = diagram_mod.collect_text_colors(item["spec"], profile)
+        except Exception:                       # 격자 계산 실패는 생성 단계에서 다룬다
+            continue
+        for color in colors:
+            key = diagram_mod.text_style_key(color)
+            if key not in keys:
+                keys.append(key)
+    return keys
 
 
 def _template_header_xml() -> str:
@@ -743,6 +783,10 @@ def _patch_diagram_table(t: str, plan, profile, ids: IdMap) -> str:
     cfg = profile["table"]
     tac = "1" if cfg["treat_as_char"] else "0"
     t = re.sub(r'(treatAsChar=")\d+(")', rf"\g<1>{tac}\2", t)
+    blank = plan.get("blank_border_fill")
+    if blank:                       # 표 바깥 테두리 제거(기본값은 검은 실선 사각형)
+        t = re.sub(r'(<hp:tbl\b[^>]*borderFillIDRef=")\d+(")', rf"\g<1>{blank}\2",
+                   t, count=1)
     t = re.sub(r'(<hp:sz width=")\d+(")', rf"\g<1>{plan['width']}\2", t, count=1)
     t = re.sub(r'(<hp:sz [^>]*height=")\d+(")', rf"\g<1>{plan['height']}\2", t, count=1)
 

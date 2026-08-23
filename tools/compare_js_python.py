@@ -30,6 +30,7 @@ from hwpx_studio.profile import load_profile  # noqa: E402
 CASES = [
     ("examples/input_outline.md", "policy-default"),
     ("tests/fixtures/diagram_table_only.md", "policy-default"),
+    ("tests/fixtures/diagram_styled.md", "policy-default"),
     ("examples/input_narrative.md", "narrative"),
 ]
 
@@ -85,6 +86,32 @@ def table_shapes(path: Path) -> list:
     return out
 
 
+def cell_designs(path: Path) -> list:
+    """도식 표의 셀 디자인(채움색·테두리 변/색/선종류) 목록 — 색 재현 비교용."""
+    with zipfile.ZipFile(str(path)) as zf:
+        header = zf.read("Contents/header.xml").decode("utf-8")
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+
+    designs = {}
+    for m in re.finditer(r'<hh:borderFill id="(\d+)"(.*?)</hh:borderFill>', header, re.S):
+        fill = re.search(r'faceColor="(#?\w+)"', m.group(2))
+        edges = tuple(
+            (name, typ.upper(), color.upper())
+            for name, typ, color in re.findall(
+                r'<hh:(left|right|top|bottom)Border type="(\w+)" width="[^"]*" color="(#\w+)"',
+                m.group(2))
+            if typ.upper() != "NONE")
+        face = (fill.group(1).upper() if fill and fill.group(1) != "none" else None)
+        designs[m.group(1)] = (face, edges)
+
+    out = []
+    for tbl in re.findall(r"<hp:tbl.*?</hp:tbl>", section, re.S):
+        used = [designs.get(i) for i in re.findall(r'borderFillIDRef="(\d+)"', tbl)]
+        out.append(sorted({d for d in used if d and (d[0] or d[1])},
+                          key=lambda d: (d[0] or "", d[1])))
+    return out
+
+
 def build_with_js(template: Path, profile_path: Path, input_path: Path, out: Path) -> None:
     script = f"""
     const m = await import({json.dumps(str(ROOT / 'docs' / 'js' / 'hwpx-studio.js'))});
@@ -136,6 +163,11 @@ def main() -> int:
                                 f"(py {len(py_texts)}개 / js {len(js_texts)}개)\n"
                                 f"    py에만={only_py}\n    js에만={only_js}")
 
+            py_designs, js_designs = cell_designs(py_out), cell_designs(js_out)
+            if py_designs != js_designs:
+                failures.append(f"{label}: 셀 디자인(색·테두리) 불일치\n"
+                                f"    py={py_designs}\n    js={js_designs}")
+
             py_tables, js_tables = table_shapes(py_out), table_shapes(js_out)
             if py_tables != js_tables:
                 failures.append(f"{label}: 표·도식 구조 불일치\n"
@@ -143,7 +175,8 @@ def main() -> int:
 
             if not failures:
                 print(f"  ✔ {label}: 스타일 {len(py_styles)}개 · 텍스트 {len(py_texts)}개 · "
-                      f"표 {len(py_tables)}개 일치")
+                      f"표 {len(py_tables)}개 · 셀 디자인 "
+                      f"{sum(len(d) for d in py_designs)}종 일치")
 
     if failures:
         print("\n브라우저 엔진과 파이썬 엔진의 산출물이 다릅니다:\n")

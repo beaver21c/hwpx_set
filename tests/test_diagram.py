@@ -131,3 +131,103 @@ def test_diagram_border_fills_cover_line_cells(policy):
     assert ("top",) in edges                            # 가로 버스
     assert ("right", "top") in edges                    # 버스 + 세로선
     assert () in edges                                  # 투명 셀
+
+
+# ──────────────────────────────────────────────────────────────
+# 노드별 스타일(M1)
+# ──────────────────────────────────────────────────────────────
+STYLED = """대표 {fill=#C00000 color=#fff}
+  기획부 {fill=#2E75B6}
+  감사실 {border=#BF8F00 link=dash link_color=#808080}"""
+
+
+def test_node_attributes_are_parsed_and_normalized(policy):
+    grid = build_grid(parse_block("type=org", STYLED.splitlines()), policy)
+    b = boxes(grid)
+    assert b["대표"].fill == "#C00000"
+    assert b["대표"].text_color == "#FFFFFF"          # #fff → #FFFFFF
+    assert b["기획부"].fill == "#2E75B6"
+    assert b["감사실"].border_color == "#BF8F00"
+    assert b["감사실"].fill == policy["diagram"]["box_fill"]   # 지정 없으면 프로파일 값
+
+
+def test_attribute_block_is_stripped_from_the_label(policy):
+    grid = build_grid(parse_block("type=org", STYLED.splitlines()), policy)
+    assert "{" not in "".join(c.text for c in grid.cells)
+
+
+def test_child_link_style_applies_to_that_branch_only(policy):
+    grid = build_grid(parse_block("type=org", STYLED.splitlines()), policy)
+    dashed = [c for c in grid.cells if c.border_type == "DASH"]
+    assert dashed, "점선 연결선이 없음"
+    assert all(c.border_color == "#808080" for c in dashed)
+    solid = [c for c in grid.cells if not c.text and not c.fill and c.border_type is None]
+    assert solid, "나머지 연결선은 실선이어야 함"
+
+
+def test_block_options_override_profile_colors(policy):
+    spec = parse_block("type=org box_fill=#F2F2F2 root_fill=#404040 line_style=dash",
+                       ["총괄", "  가부서", "  나부서"])
+    grid = build_grid(spec, policy)
+    b = boxes(grid)
+    assert b["총괄"].fill == "#404040"
+    assert b["가부서"].fill == "#F2F2F2"
+    assert all(c.border_type == "DASH" for c in grid.cells if not c.text and not c.fill)
+    assert policy["diagram"]["box_fill"] == "#DCE6F1"   # 원본 프로파일은 그대로
+
+
+def test_flow_and_matrix_take_cell_attributes(policy):
+    flow = build_grid(parse_block("type=flow", ["접수 → 통보 {fill=#C00000 color=#FFF}"]), policy)
+    assert boxes(flow)["통보"].fill == "#C00000"
+    assert boxes(flow)["통보"].text_color == "#FFFFFF"
+    matrix = build_grid(parse_block("type=matrix", ["| | 중앙 |", "| 기획 | 본부 {fill=#FFF2CC} |"]),
+                        policy)
+    assert boxes(matrix)["본부"].fill == "#FFF2CC"
+
+
+def test_unknown_colors_are_ignored_not_crashed(policy):
+    grid = build_grid(parse_block("type=org", ["대표 {fill=하늘색 color=#GGGGGG}"]), policy)
+    assert boxes(grid)["대표"].fill == policy["diagram"]["root_fill"]
+    assert boxes(grid)["대표"].text_color is None
+
+
+def test_styled_diagram_reaches_the_hwpx_file(policy, tmp_path):
+    out = tmp_path / "styled.hwpx"
+    build_document(policy, [{"type": "diagram",
+                             "spec": parse_block("type=org", STYLED.splitlines()).to_dict()}],
+                   str(out))
+    with zipfile.ZipFile(str(out)) as zf:
+        header = zf.read("Contents/header.xml").decode("utf-8")
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+
+    used = set(re.findall(r'borderFillIDRef="(\d+)"', section))
+    designs = {}
+    for m in re.finditer(r'<hh:borderFill id="(\d+)"(.*?)</hh:borderFill>', header, re.S):
+        fill = re.search(r'faceColor="(#\w+)"', m.group(2))
+        edges = re.findall(r'type="(\w+)" width="[^"]*" color="(#\w+)"', m.group(2))
+        designs[m.group(1)] = (fill.group(1) if fill else None, edges)
+
+    fills = {designs[i][0] for i in used if i in designs}
+    assert {"#C00000", "#2E75B6"} <= fills                      # 노드별 배경색
+    assert any(t == "DASH" and c == "#808080"                    # 점선 연결선
+               for i in used if i in designs for t, c in designs[i][1])
+
+    # 글자색은 charPr로 등록되어 본문이 그것을 참조한다
+    white = [m.group(1) for m in
+             re.finditer(r'<hh:charPr id="(\d+)"[^>]*textColor="#FFFFFF"', header)]
+    assert set(white) & set(re.findall(r'charPrIDRef="(\d+)"', section))
+
+
+def test_diagram_table_has_no_outer_frame(policy, tmp_path):
+    """표 자체의 테두리는 꺼져 있어야 한다(검은 사각형이 도식을 감싸면 안 됨)."""
+    out = tmp_path / "frame.hwpx"
+    build_document(policy, [{"type": "diagram",
+                             "spec": parse_block("type=org", ["대표", "  가부서"]).to_dict()}],
+                   str(out))
+    with zipfile.ZipFile(str(out)) as zf:
+        header = zf.read("Contents/header.xml").decode("utf-8")
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+    ref = re.search(r'<hp:tbl\b[^>]*borderFillIDRef="(\d+)"', section).group(1)
+    block = re.search(rf'<hh:borderFill id="{ref}".*?</hh:borderFill>', header, re.S).group()
+    edges = re.findall(r'<hh:(?:left|right|top|bottom)Border type="(\w+)"', block)
+    assert set(edges) == {"NONE"}, f"표 바깥 테두리가 켜져 있음: {edges}"

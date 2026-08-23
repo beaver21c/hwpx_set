@@ -311,6 +311,62 @@ function periodIssues(text, line, policy) {
 const ARROW_SPLIT = /\s*(?:→|->|=>|▶|>)\s*/;
 const MIN_BOX_WIDTH_MM = 12;
 
+const LINE_TYPES = {
+  solid: 'SOLID', dash: 'DASH', dot: 'DOT',
+  dashdot: 'DASH_DOT', dashdotdot: 'DASH_DOT_DOT', longdash: 'LONG_DASH',
+};
+const BLOCK_COLOR_OPTIONS = ['box_fill', 'box_border', 'box_color', 'root_fill', 'root_color', 'line_color'];
+
+export function normalizeColor(value) {
+  if (!value) return null;
+  let v = String(value).trim().replace(/^#/, '');
+  if (/^[0-9a-fA-F]{3}$/.test(v)) v = v.split('').map((c) => c + c).join('');
+  return /^[0-9a-fA-F]{6}$/.test(v) ? `#${v.toUpperCase()}` : null;
+}
+
+export function normalizeLineType(value) {
+  if (!value) return null;
+  let v = String(value).trim().toLowerCase().replace(/[-_]/g, '');
+  if (v === '점선' || v === '파선') v = 'dash';
+  else if (v === '실선') v = 'solid';
+  return LINE_TYPES[v] || null;
+}
+
+/** `기획부 {fill=#DCE6F1 color=#000}` → [텍스트, 속성] */
+export function splitAttrs(text) {
+  const m = /\s*\{([^{}]*)\}\s*$/.exec(text);
+  if (!m) return [text.trim(), {}];
+  const attrs = {};
+  for (const token of (m[1].replace(/,/g, ' ').match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [])) {
+    const eq = token.indexOf('=');
+    if (eq > 0) attrs[token.slice(0, eq).trim().toLowerCase()] = token.slice(eq + 1).trim().replace(/^["']|["']$/g, '');
+  }
+  return [text.slice(0, m.index).trim(), attrs];
+}
+
+function nodeStyle(attrs) {
+  const style = {};
+  for (const key of ['fill', 'color', 'border', 'link_color']) {
+    const color = normalizeColor(attrs[key]);
+    if (color) style[key] = color;
+  }
+  const link = normalizeLineType(attrs.link);
+  if (link) style.link = link;
+  return style;
+}
+
+/** 블록 헤더 옵션으로 프로파일의 diagram 설정을 덮어쓴 사본 */
+function effectiveDiagram(spec, profile) {
+  const dia = { ...profile.diagram };
+  for (const key of BLOCK_COLOR_OPTIONS) {
+    const color = normalizeColor(spec.options?.[key]);
+    if (color) dia[key] = color;
+  }
+  const lineType = normalizeLineType(spec.options?.line_style);
+  if (lineType) dia.line_type = lineType;
+  return dia;
+}
+
 export function parseDiagramBlock(header, lines) {
   const options = {};
   for (const token of header.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || []) {
@@ -337,13 +393,13 @@ function parseTree(lines) {
     const expanded = raw.replace(/\t/g, '  ');
     const stripped = expanded.replace(/^ +/, '');
     const indent = expanded.length - stripped.length;
-    const text = stripped.trim().replace(/^[-*•]\s+/, '');
-    if (text) entries.push([indent, text]);
+    const [text, attrs] = splitAttrs(stripped.trim().replace(/^[-*•]\s+/, ''));
+    if (text) entries.push([indent, text, nodeStyle(attrs)]);
   }
   const roots = [];
   const stack = [];
-  for (const [indent, text] of entries) {
-    const node = { text, depth: 0, children: [], center: 0, row: 0 };
+  for (const [indent, text, style] of entries) {
+    const node = { text, depth: 0, children: [], center: 0, row: 0, style };
     while (stack.length && stack[stack.length - 1][0] >= indent) stack.pop();
     if (stack.length) {
       const parent = stack[stack.length - 1][1];
@@ -366,11 +422,18 @@ function* walk(nodes) {
 const BOX_BORDERS = ['left', 'right', 'top', 'bottom'];
 
 export function buildGrid(spec, profile, force = false) {
-  const grid = spec.type === 'flow' ? gridFlow(spec, profile)
-    : spec.type === 'matrix' ? gridMatrix(spec, profile)
-      : gridOrg(spec, profile);
+  const effective = { ...profile, diagram: effectiveDiagram(spec, profile) };
+  const grid = spec.type === 'flow' ? gridFlow(spec, effective)
+    : spec.type === 'matrix' ? gridMatrix(spec, effective)
+      : gridOrg(spec, effective);
   grid.title = spec.title || '';
-  const maxW = Number(spec.options?.width || profile.diagram.max_width_mm);
+  grid.diagram = effective.diagram;
+  if (effective.diagram.line_type) {
+    for (const cell of grid.cells) {
+      if (!cell.text && !cell.fill && !cell.borderType) cell.borderType = effective.diagram.line_type;
+    }
+  }
+  const maxW = Number(spec.options?.width || effective.diagram.max_width_mm);
   if (force) grid.fallbackToImage = false;
   if (totalWidth(grid) > maxW + 0.01 && !force) {
     grid.warnings.push(`도식 폭 ${totalWidth(grid).toFixed(0)}mm > 최대 ${maxW}mm`);
@@ -442,31 +505,46 @@ function gridOrg(spec, profile) {
     const start = Math.max(0, Math.min(node.center - (half - 1), cols - boxCols));
     cells.push({
       row: node.row, col: start, text: node.text, borders: [...BOX_BORDERS],
-      fill: node.depth === 0 ? dia.root_fill : dia.box_fill,
+      fill: node.style.fill || (node.depth === 0 ? dia.root_fill : dia.box_fill),
       char: node.depth === 0 ? 'diagram_root' : 'diagram',
       colSpan: boxCols, rowSpan: 1,
+      textColor: node.style.color || null,
+      borderColor: node.style.border || null,
+      borderType: null,
     });
   }
   for (const node of walk(roots)) {
     if (!node.children.length) continue;
     const rowA = 3 * node.depth + 1;
     const rowB = rowA + 1;
-    const centers = node.children.map((c) => c.center).sort((a, b) => a - b);
+    const byCenter = new Map(node.children.map((c) => [c.center, c]));
+    const centers = [...byCenter.keys()].sort((a, b) => a - b);
     addBorder(cells, rowA, node.center, 'right');
-    for (let col = centers[0] + 1; col <= centers[centers.length - 1]; col += 1) addBorder(cells, rowB, col, 'top');
-    for (const col of centers) addBorder(cells, rowB, col, 'right');
+    for (let col = centers[0] + 1; col <= centers[centers.length - 1]; col += 1) {
+      const child = byCenter.get(col);
+      addBorder(cells, rowB, col, 'top', child?.style.link_color, child?.style.link);
+    }
+    for (const col of centers) {
+      const child = byCenter.get(col);
+      addBorder(cells, rowB, col, 'right', child?.style.link_color, child?.style.link);
+    }
   }
 
   return { rows, cols, colWidths: new Array(cols).fill(unit), rowHeights, cells, warnings, fallbackToImage: false };
 }
 
-function addBorder(cells, row, col, edge) {
+function addBorder(cells, row, col, edge, color = null, lineType = null) {
   const found = cells.find((c) => c.row === row && c.col === col);
   if (found) {
     if (!found.borders.includes(edge)) found.borders = [...new Set([...found.borders, edge])].sort();
+    found.borderColor = color || found.borderColor || null;
+    found.borderType = lineType || found.borderType || null;
     return;
   }
-  cells.push({ row, col, text: '', borders: [edge], fill: null, char: 'diagram', colSpan: 1, rowSpan: 1 });
+  cells.push({
+    row, col, text: '', borders: [edge], fill: null, char: 'diagram', colSpan: 1, rowSpan: 1,
+    textColor: null, borderColor: color || null, borderType: lineType || null,
+  });
 }
 
 function gridFlow(spec, profile) {
@@ -475,7 +553,11 @@ function gridFlow(spec, profile) {
   const steps = [];
   for (const line of spec.lines) {
     if (!line.trim()) continue;
-    steps.push(...line.trim().split(ARROW_SPLIT).map((s) => s.trim()).filter(Boolean));
+    for (const part of line.trim().split(ARROW_SPLIT)) {
+      if (!part.trim()) continue;
+      const [text, attrs] = splitAttrs(part.trim());
+      if (text) steps.push([text, nodeStyle(attrs)]);
+    }
   }
   if (!steps.length) {
     return { rows: 1, cols: 1, colWidths: [dia.col_width_mm], rowHeights: [dia.row_height_mm], cells: [], warnings: ['도식 내용이 비어 있음'], fallbackToImage: false };
@@ -489,9 +571,13 @@ function gridFlow(spec, profile) {
     const rows = 2 * steps.length - 1;
     const boxW = Math.min(Number(dia.col_width_mm) * 2, maxW);
     const rowHeights = [];
-    steps.forEach((text, i) => {
-      cells.push({ row: 2 * i, col: 0, text, borders: [...BOX_BORDERS], fill: dia.box_fill, char: 'diagram', colSpan: 1, rowSpan: 1 });
-      if (i < steps.length - 1) cells.push({ row: 2 * i + 1, col: 0, text: '▼', borders: [], fill: null, char: 'diagram', colSpan: 1, rowSpan: 1 });
+    steps.forEach(([text, style], i) => {
+      cells.push({
+        row: 2 * i, col: 0, text, borders: [...BOX_BORDERS], fill: style.fill || dia.box_fill,
+        char: 'diagram', colSpan: 1, rowSpan: 1,
+        textColor: style.color || null, borderColor: style.border || null, borderType: null,
+      });
+      if (i < steps.length - 1) cells.push({ row: 2 * i + 1, col: 0, text: '▼', borders: [], fill: null, char: 'diagram', colSpan: 1, rowSpan: 1, textColor: null, borderColor: null, borderType: null });
     });
     for (let i = 0; i < rows; i += 1) rowHeights.push(i % 2 === 0 ? rowH : Number(dia.row_gap_mm));
     return { rows, cols: 1, colWidths: [boxW], rowHeights, cells, warnings, fallbackToImage: false };
@@ -505,11 +591,15 @@ function gridFlow(spec, profile) {
     warnings.push(`절차도 상자 폭을 ${boxW.toFixed(1)}mm로 자동 축소`);
   }
   const colWidths = [];
-  steps.forEach((text, i) => {
-    cells.push({ row: 0, col: 2 * i, text, borders: [...BOX_BORDERS], fill: dia.box_fill, char: 'diagram', colSpan: 1, rowSpan: 1 });
+  steps.forEach(([text, style], i) => {
+    cells.push({
+      row: 0, col: 2 * i, text, borders: [...BOX_BORDERS], fill: style.fill || dia.box_fill,
+      char: 'diagram', colSpan: 1, rowSpan: 1,
+      textColor: style.color || null, borderColor: style.border || null, borderType: null,
+    });
     colWidths.push(boxW);
     if (i < n - 1) {
-      cells.push({ row: 0, col: 2 * i + 1, text: '→', borders: [], fill: null, char: 'diagram', colSpan: 1, rowSpan: 1 });
+      cells.push({ row: 0, col: 2 * i + 1, text: '→', borders: [], fill: null, char: 'diagram', colSpan: 1, rowSpan: 1, textColor: null, borderColor: null, borderType: null });
       colWidths.push(arrowW);
     }
   });
@@ -523,7 +613,7 @@ function gridMatrix(spec, profile) {
     const s = line.trim();
     if (!s.startsWith('|')) continue;
     if (/^\|[\s:|-]+\|$/.test(s)) continue;
-    table.push(s.slice(1, -1).split('|').map((p) => p.trim()));
+    table.push(s.slice(1, -1).split('|').map((p) => splitAttrs(p.trim())));
   }
   if (!table.length) {
     return { rows: 1, cols: 1, colWidths: [dia.col_width_mm], rowHeights: [dia.row_height_mm], cells: [], warnings: ['도식 내용이 비어 있음'], fallbackToImage: false };
@@ -534,12 +624,14 @@ function gridMatrix(spec, profile) {
   const cells = [];
   table.forEach((row, r) => {
     for (let c = 0; c < cols; c += 1) {
-      const text = row[c] ?? '';
+      const [text, attrs] = row[c] ?? ['', {}];
+      const style = nodeStyle(attrs);
       const isHead = r === 0 || c === 0;
       cells.push({
         row: r, col: c, text, borders: [...BOX_BORDERS],
-        fill: (r === 0 && c === 0 && !text) ? dia.root_fill : (isHead ? dia.box_fill : null),
+        fill: style.fill || ((r === 0 && c === 0 && !text) ? dia.root_fill : (isHead ? dia.box_fill : null)),
         char: 'diagram', colSpan: 1, rowSpan: 1,
+        textColor: style.color || null, borderColor: style.border || null, borderType: null,
       });
     }
   });
@@ -593,9 +685,9 @@ function paraPrXml(id, { left = 0, indent = 0, align = 'JUSTIFY', spacingBelow =
     + ' connect="0" ignoreMargin="0"/></hh:paraPr>';
 }
 
-function borderFillXml(id, { borders = BOX_BORDERS, color = '#000000', fill = null, width = '0.12 mm' }) {
+function borderFillXml(id, { borders = BOX_BORDERS, color = '#000000', fill = null, width = '0.12 mm', type = 'SOLID' }) {
   const edge = (name) => (borders.includes(name)
-    ? `<hh:${name}Border type="SOLID" width="${width}" color="${color}"/>`
+    ? `<hh:${name}Border type="${type}" width="${width}" color="${color}"/>`
     : `<hh:${name}Border type="NONE" width="${width}" color="${color}"/>`);
   const brush = fill
     ? `<hc:fillBrush><hc:winBrush faceColor="${fill}" hatchColor="#999999" alpha="0"/></hc:fillBrush>`
@@ -618,7 +710,12 @@ function nextId(xml, tag, fallback = 0) {
   return ids.length ? Math.max(...ids) + 1 : fallback;
 }
 
-function styleConfigs(profile) {
+const diagramTextCfg = (profile, color) => ({
+  name: `도식(${color})`, size_pt: profile.diagram.font_size_pt, bold: true, font: 'bold',
+  color, left_pt: 0, indent_pt: 0, spacing_below_pt: 0, line_spacing: 130, align: 'CENTER',
+});
+
+function styleConfigs(profile, textKeys = []) {
   const dia = profile.diagram;
   const out = profile.levels.map((lv) => [lv.key, lv]);
   out.push(['table_top', profile.table.top], ['table_mid', profile.table.mid],
@@ -633,16 +730,17 @@ function styleConfigs(profile) {
     color: dia.root_color, left_pt: 0, indent_pt: 0, spacing_below_pt: 0,
     line_spacing: 130, align: 'CENTER',
   }]);
+  for (const key of textKeys) out.push([key, diagramTextCfg(profile, key.slice(4))]);
   return out;
 }
 
-function planIds(headerXml, profile, diagramFills) {
+function planIds(headerXml, profile, diagramFills, textKeys = []) {
   let charId = nextId(headerXml, 'hh:charPr');
   let paraId = nextId(headerXml, 'hh:paraPr');
   const bfId = nextId(headerXml, 'hh:borderFill', 1);
 
   const ids = { styles: {}, chars: {}, paras: {}, borderBase: bfId, borderHeader: bfId + 1, diagramFills: new Map() };
-  const keys = [...profile.levels.map((lv) => lv.key), 'table_top', 'table_mid', 'table_left', 'body', 'diagram', 'diagram_root'];
+  const keys = [...profile.levels.map((lv) => lv.key), 'table_top', 'table_mid', 'table_left', 'body', 'diagram', 'diagram_root', ...textKeys];
   for (const key of keys) {
     ids.chars[key] = charId; charId += 1;
     ids.paras[key] = paraId; paraId += 1;
@@ -652,6 +750,7 @@ function planIds(headerXml, profile, diagramFills) {
   for (const key of ['table_top', 'table_mid', 'table_left', 'body']) { ids.styles[key] = sid; sid += 1; }
   ids.styles.diagram = ids.styles.table_mid;
   ids.styles.diagram_root = ids.styles.table_mid;
+  for (const key of textKeys) ids.styles[key] = ids.styles.table_mid;
 
   let fillId = bfId + 2;
   for (const key of diagramFills) { ids.diagramFills.set(key, fillId); fillId += 1; }
@@ -663,7 +762,7 @@ const refs = (ids, key) => {
   return { style: ids.styles[k], char: ids.chars[k], para: ids.paras[k] };
 };
 
-function patchHeader(xml, profile, ids, diagramFills) {
+function patchHeader(xml, profile, ids, diagramFills, textKeys = []) {
   let x = xml;
   x = x.replace(/(<hh:font id="0" face=")([^"]+)(")/g, `$1${profile.fonts.bold}$3`);
   x = x.replace(/(<hh:font id="1" face=")([^"]+)(")/g, `$1${profile.fonts.light}$3`);
@@ -671,7 +770,7 @@ function patchHeader(xml, profile, ids, diagramFills) {
   x = x.replace(/<hh:paraPr id="0"[\s\S]*?<\/hh:paraPr>/, (block) =>
     block.replace(/(<hh:lineSpacing[^>]*value=")\d+(")/, `$1${Number(profile.body.line_spacing)}$2`));
 
-  const cfgs = styleConfigs(profile);
+  const cfgs = styleConfigs(profile, textKeys);
   const chars = cfgs.map(([key, cfg]) => charPrXml(
     ids.chars[key], cfg.size_pt ?? 12, Boolean(cfg.bold),
     cfg.color || '#000000', fontId(cfg.font || 'light'),
@@ -690,13 +789,14 @@ function patchHeader(xml, profile, ids, diagramFills) {
   let fills = borderFillXml(ids.borderBase, { color: profile.table.border_color })
     + borderFillXml(ids.borderHeader, { color: profile.table.border_color, fill: profile.table.header_bg });
   for (const [key, id] of ids.diagramFills) {
-    const [borderPart, fillPart] = key.split('|');
+    const [borderPart, fillPart, colorPart, typePart] = key.split('|');
     const borders = borderPart ? borderPart.split(',') : [];
     fills += borderFillXml(id, {
       borders,
-      color: fillPart ? profile.diagram.box_border : profile.diagram.line_color,
+      color: colorPart || (fillPart ? profile.diagram.box_border : profile.diagram.line_color),
       fill: fillPart || null,
       width: `${Number(profile.diagram.line_width_mm)} mm`,
+      type: typePart || 'SOLID',
     });
   }
   x = x.replace('</hh:borderFills>', `${fills}</hh:borderFills>`);
@@ -709,7 +809,7 @@ function patchHeader(xml, profile, ids, diagramFills) {
     }
   }
 
-  const styleItems = cfgs.filter(([key]) => key !== 'diagram' && key !== 'diagram_root');
+  const styleItems = cfgs.filter(([key]) => key !== 'diagram' && key !== 'diagram_root' && !key.startsWith('dia:'));
   const maxSid = Math.max(...styleItems.map(([key]) => ids.styles[key]));
   const bg = '<hh:style id="0" type="PARA" name="바탕글" engName="Normal" paraPrIDRef="0"'
     + ' charPrIDRef="0" nextStyleIDRef="0" langID="1042" lockForm="0"/>';
@@ -785,10 +885,17 @@ function tableWrapper(nextIdFn, anchor, inner, { rows, cols, width, height, bord
     + `${inner}</hp:tbl></hp:run></hp:p>`;
 }
 
-const fillKey = (cell) => `${[...cell.borders].sort().join(',')}|${cell.fill || ''}`;
+const fillKey = (cell, dia) => {
+  const color = cell.borderColor || (cell.fill ? dia.box_border : dia.line_color);
+  const type = cell.borderType || dia.line_type || 'SOLID';
+  return `${[...cell.borders].sort().join(',')}|${cell.fill || ''}|${color}|${type}`;
+};
+
+const textColors = (grid) => [...new Set(grid.cells.map((c) => c.textColor).filter(Boolean))];
 
 function collectDiagramFills(items, profile) {
   const keys = new Set();
+  const textKeys = new Set();
   const grids = new Map();
   const warnings = [];
   items.forEach((item, index) => {
@@ -801,10 +908,11 @@ function collectDiagramFills(items, profile) {
     const grid = buildGrid(item.spec, profile, true);
     warnings.push(...grid.warnings);
     grids.set(index, grid);
-    keys.add('|');                               // 투명 셀
-    for (const cell of grid.cells) keys.add(fillKey(cell));
+    keys.add('||' + profile.diagram.line_color + '|SOLID');       // 투명 셀
+    for (const cell of grid.cells) keys.add(fillKey(cell, grid.diagram || profile.diagram));
+    for (const color of textColors(grid)) textKeys.add(`dia:${color}`);
   });
-  return { keys: [...keys], grids, warnings };
+  return { keys: [...keys], textKeys: [...textKeys], grids, warnings };
 }
 
 function contentTableXml(nextIdFn, item, profile, ids) {
@@ -842,7 +950,8 @@ function diagramTableXml(nextIdFn, grid, profile, ids) {
   const width = mm(grid.colWidths.reduce((a, b) => a + b, 0));
   const height = mm(grid.rowHeights.reduce((a, b) => a + b, 0));
   const margin = mm(0.2);
-  const blank = ids.diagramFills.get('|');
+  const dia = grid.diagram || profile.diagram;
+  const blank = ids.diagramFills.get('||' + profile.diagram.line_color + '|SOLID');
   const byPos = new Map(grid.cells.map((cell) => [`${cell.row},${cell.col}`, cell]));
   const covered = new Set();
   for (const cell of grid.cells) {
@@ -865,8 +974,9 @@ function diagramTableXml(nextIdFn, grid, profile, ids) {
       const cellHeight = mm(grid.rowHeights.slice(r, r + rowSpan).reduce((a, b) => a + b, 0));
       cells += cellXml(nextIdFn, {
         row: r, col: c, colSpan, rowSpan, width: cellWidth, height: cellHeight,
-        borderFill: cell ? ids.diagramFills.get(fillKey(cell)) : blank,
-        style: refs(ids, cell?.char || 'diagram'),
+        borderFill: cell ? ids.diagramFills.get(fillKey(cell, dia)) : blank,
+        style: refs(ids, cell?.textColor && `dia:${cell.textColor}` in ids.styles
+          ? `dia:${cell.textColor}` : (cell?.char || 'diagram')),
         text: cell?.text || '',
         margin,
       });
@@ -940,10 +1050,10 @@ export async function buildDocument(templateBytes, userProfile, items) {
   const headerXml = decoder.decode(files.get('Contents/header.xml'));
   const sectionXml = decoder.decode(files.get('Contents/section0.xml'));
 
-  const { keys, grids, warnings } = collectDiagramFills(items, profile);
-  const ids = planIds(headerXml, profile, keys);
+  const { keys, textKeys, grids, warnings } = collectDiagramFills(items, profile);
+  const ids = planIds(headerXml, profile, keys, textKeys);
 
-  files.set('Contents/header.xml', encoder.encode(patchHeader(headerXml, profile, ids, keys)));
+  files.set('Contents/header.xml', encoder.encode(patchHeader(headerXml, profile, ids, keys, textKeys)));
   files.set('Contents/section0.xml', encoder.encode(buildSection(sectionXml, profile, ids, items, grids)));
 
   return { bytes: await zip(files), warnings };
