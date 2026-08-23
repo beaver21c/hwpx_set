@@ -307,12 +307,23 @@ def effective_diagram(spec: DiagramSpec, profile: Dict[str, Any]) -> Dict[str, A
 def build_grid(spec: DiagramSpec, profile: Dict[str, Any], force: bool = False) -> GridPlan:
     spec = ensure_spec(spec)
     profile = dict(profile, diagram=effective_diagram(spec, profile))
+    layout = str(spec.options.get("layout") or "").lower()
     if spec.type == "flow":
         grid = _grid_flow(spec, profile)
     elif spec.type == "matrix":
         grid = _grid_matrix(spec, profile)
+    elif layout.startswith("side"):
+        grid = _grid_org_side(spec, profile)
     else:
         grid = _grid_org(spec, profile)
+        if grid.fallback_to_image and not layout:
+            # 가로로는 안 들어간다. 이미지로 밀어내기 전에 세로 목록형으로 바꾼다
+            side = _grid_org_side(spec, profile)
+            side.warnings = [w for w in grid.warnings if "이미지로 폴백" not in w]
+            side.warnings.append(
+                "가로로 늘어놓기에는 상자가 많아 세로 목록형으로 배치했다"
+                "(가로를 원하면 width를 늘리거나 layout=wide)")
+            grid = side
     grid.title = spec.title
     grid.diagram = profile["diagram"]
 
@@ -382,8 +393,7 @@ def _grid_org(spec: DiagramSpec, profile: Dict[str, Any]) -> GridPlan:
     too_narrow = box_w < MIN_BOX_WIDTH_MM
     if too_narrow:
         warnings.append(
-            f"같은 단계 상자가 {n_leaves}개여서 폭이 {box_w:.1f}mm까지 좁아짐 "
-            f"→ 이미지로 폴백")
+            f"같은 단계 상자가 {n_leaves}개여서 폭이 {box_w:.1f}mm까지 좁아짐")
     elif abs(box_w - float(dia["col_width_mm"])) > 0.5:
         warnings.append(f"도식 상자 폭을 {box_w:.1f}mm로 자동 축소")
 
@@ -454,6 +464,86 @@ def _grid_org(spec: DiagramSpec, profile: Dict[str, Any]) -> GridPlan:
     return GridPlan(rows=rows, cols=cols, col_widths_mm=[unit] * cols,
                     row_heights_mm=row_heights, cells=cells, warnings=warnings,
                     fallback_to_image=too_narrow)
+
+
+def _grid_org_side(spec: DiagramSpec, profile: Dict[str, Any]) -> GridPlan:
+    """세로 목록형 계층도.
+
+    가로로 늘어놓으면 넘치는 조직도(실·국이 여럿인 경우)를 위한 배치다. 상자를
+    한 줄에 하나씩 세로로 쌓고, 단계가 내려갈수록 오른쪽으로 들여쓴다. 상자 수가
+    늘어도 **폭이 넓어지지 않는다**.
+
+    행·열 모델은 같은 요령이다.
+
+    * 노드마다 **두 행**(위·아래 절반)을 쓰고 상자를 두 행에 걸쳐 병합한다.
+      두 행의 경계가 곧 상자의 세로 중심이라, 가로 이음선을 그 경계(아래 절반
+      셀의 위쪽 변)에 그리면 상자 한가운데로 들어간다.
+    * 단계마다 **두 열**(세로선 자리 + 이음선 자리)을 둔다. 부모의 세로선은 첫
+      열의 오른쪽 변이라 부모 상자 안쪽에서 내려오고, 자식 상자는 두 열 뒤에서
+      시작하므로 그 사이가 가로 이음선이 된다.
+    """
+    dia = profile["diagram"]
+    warnings: List[str] = []
+    roots = parse_tree(spec.lines)
+    if not roots:
+        return GridPlan(1, 1, [float(dia["col_width_mm"])], [float(dia["row_height_mm"])],
+                        warnings=["도식 내용이 비어 있음"])
+
+    nodes = list(_walk(roots))
+    depth = _max_depth(roots)
+    max_w = float(spec.options.get("width") or dia["max_width_mm"])
+
+    step = max(4.0, float(dia["col_gap_mm"]))          # 한 단계 들여쓰기 폭
+    spine_w = stub_w = step / 2
+    box_w = float(dia["col_width_mm"]) * 2
+    if step * (depth - 1) + box_w > max_w:
+        box_w = max(MIN_BOX_WIDTH_MM, max_w - step * (depth - 1))
+        warnings.append(f"세로 목록형: 상자 폭을 {box_w:.1f}mm로 맞춤")
+    col_widths = [spine_w, stub_w] * (depth - 1) + [box_w]
+    last_col = len(col_widths) - 1
+
+    row_h = float(dia["row_height_mm"]) / 2
+    gap_h = max(1.0, float(dia["row_gap_mm"]) / 3)
+    cells: List[CellPlan] = []
+    row_heights: List[float] = []
+    row_of: Dict[int, int] = {}                        # id(node) → 위 절반 행
+
+    for i, node in enumerate(nodes):
+        if i:                                          # 상자 사이 간격 행
+            row_heights.append(gap_h)
+        top = len(row_heights)
+        row_of[id(node)] = top
+        row_heights += [row_h, row_h]
+        col = min(2 * node.depth, last_col)
+        is_root = node.depth == 0
+        cells.append(CellPlan(
+            row=top, col=col, text=node.text,
+            borders=("left", "right", "top", "bottom"),
+            fill=node.style.get("fill") or (dia["root_fill"] if is_root else dia["box_fill"]),
+            char="diagram_root" if is_root else "diagram",
+            col_span=last_col - col + 1, row_span=2,
+            text_color=node.style.get("color"),
+            border_color=node.style.get("border"),
+        ))
+
+    # 연결선: 부모 상자 안쪽에서 내려오는 세로선 + 자식마다 가로 이음선
+    for node in nodes:
+        if not node.children:
+            continue
+        spine = min(2 * node.depth, last_col)
+        if spine >= last_col:                          # 더 들여쓸 열이 없다
+            continue
+        last = node.children[-1]
+        for row in range(row_of[id(node)] + 2, row_of[id(last)] + 1):
+            _add_border(cells, row, spine, "right")
+        for child in node.children:                # 세로선과 자식 상자 사이 한 칸
+            _add_border(cells, row_of[id(child)] + 1, spine + 1, "top",
+                        color=child.style.get("link_color"),
+                        line_type=child.style.get("link"))
+
+    return GridPlan(rows=len(row_heights), cols=len(col_widths),
+                    col_widths_mm=col_widths, row_heights_mm=row_heights,
+                    cells=cells, warnings=warnings)
 
 
 def _add_border(cells: List[CellPlan], row: int, col: int, edge: str,

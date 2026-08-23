@@ -423,9 +423,21 @@ const BOX_BORDERS = ['left', 'right', 'top', 'bottom'];
 
 export function buildGrid(spec, profile, force = false) {
   const effective = { ...profile, diagram: effectiveDiagram(spec, profile) };
-  const grid = spec.type === 'flow' ? gridFlow(spec, effective)
-    : spec.type === 'matrix' ? gridMatrix(spec, effective)
-      : gridOrg(spec, effective);
+  const layout = String(spec.options?.layout || '').toLowerCase();
+  let grid;
+  if (spec.type === 'flow') grid = gridFlow(spec, effective);
+  else if (spec.type === 'matrix') grid = gridMatrix(spec, effective);
+  else if (layout.startsWith('side')) grid = gridOrgSide(spec, effective);
+  else {
+    grid = gridOrg(spec, effective);
+    if (grid.fallbackToImage && !layout) {
+      const side = gridOrgSide(spec, effective);
+      side.warnings = grid.warnings.filter((w) => !w.includes('이미지로 폴백'));
+      side.warnings.push('가로로 늘어놓기에는 상자가 많아 세로 목록형으로 배치했다'
+        + '(가로를 원하면 width를 늘리거나 layout=wide)');
+      grid = side;
+    }
+  }
   grid.title = spec.title || '';
   grid.diagram = effective.diagram;
   if (effective.diagram.line_type) {
@@ -476,7 +488,8 @@ function gridOrg(spec, profile) {
   const cols = stride * leaves - gapCols;
 
   if (cols * unit > maxW) { unit = maxW / cols; boxW = unit * boxCols; }
-  if (boxW < MIN_BOX_WIDTH_MM) warnings.push(`상자 폭이 ${boxW.toFixed(1)}mm까지 좁아짐 — 항목을 줄이거나 폭을 늘리세요`);
+  const tooNarrow = boxW < MIN_BOX_WIDTH_MM;
+  if (tooNarrow) warnings.push(`같은 단계 상자가 ${leaves}개여서 폭이 ${boxW.toFixed(1)}mm까지 좁아짐`);
   else if (Math.abs(boxW - Number(dia.col_width_mm)) > 0.5) warnings.push(`도식 상자 폭을 ${boxW.toFixed(1)}mm로 자동 축소`);
 
   let slot = 0;
@@ -530,7 +543,75 @@ function gridOrg(spec, profile) {
     }
   }
 
-  return { rows, cols, colWidths: new Array(cols).fill(unit), rowHeights, cells, warnings, fallbackToImage: false };
+  return { rows, cols, colWidths: new Array(cols).fill(unit), rowHeights, cells, warnings, fallbackToImage: tooNarrow };
+}
+
+/**
+ * 세로 목록형 계층도 (diagram.py: _grid_org_side 이식).
+ * 상자를 한 줄에 하나씩 쌓고 단계마다 오른쪽으로 들여쓴다 — 상자가 많아도 폭이 안 는다.
+ */
+function gridOrgSide(spec, profile) {
+  const dia = profile.diagram;
+  const warnings = [];
+  const roots = parseTree(spec.lines);
+  if (!roots.length) {
+    return { rows: 1, cols: 1, colWidths: [dia.col_width_mm], rowHeights: [dia.row_height_mm], cells: [], warnings: ['도식 내용이 비어 있음'], fallbackToImage: false };
+  }
+
+  const nodes = [...walk(roots)];
+  const depth = maxDepth(roots);
+  const maxW = Number(spec.options?.width || dia.max_width_mm);
+
+  const step = Math.max(4, Number(dia.col_gap_mm));
+  const spineW = step / 2;
+  let boxW = Number(dia.col_width_mm) * 2;
+  if (step * (depth - 1) + boxW > maxW) {
+    boxW = Math.max(MIN_BOX_WIDTH_MM, maxW - step * (depth - 1));
+    warnings.push(`세로 목록형: 상자 폭을 ${boxW.toFixed(1)}mm로 맞춤`);
+  }
+  const colWidths = [];
+  for (let d = 0; d < depth - 1; d += 1) colWidths.push(spineW, spineW);
+  colWidths.push(boxW);
+  const lastCol = colWidths.length - 1;
+
+  const rowH = Number(dia.row_height_mm) / 2;
+  const gapH = Math.max(1, Number(dia.row_gap_mm) / 3);
+  const cells = [];
+  const rowHeights = [];
+  const rowOf = new Map();
+
+  nodes.forEach((node, i) => {
+    if (i) rowHeights.push(gapH);
+    const top = rowHeights.length;
+    rowOf.set(node, top);
+    rowHeights.push(rowH, rowH);
+    const col = Math.min(2 * node.depth, lastCol);
+    cells.push({
+      row: top, col, text: node.text, borders: [...BOX_BORDERS],
+      fill: node.style.fill || (node.depth === 0 ? dia.root_fill : dia.box_fill),
+      char: node.depth === 0 ? 'diagram_root' : 'diagram',
+      colSpan: lastCol - col + 1, rowSpan: 2,
+      textColor: node.style.color || null,
+      borderColor: node.style.border || null,
+      borderType: null,
+    });
+  });
+
+  for (const node of nodes) {
+    if (!node.children.length) continue;
+    const spine = Math.min(2 * node.depth, lastCol);
+    if (spine >= lastCol) continue;
+    const last = node.children[node.children.length - 1];
+    for (let row = rowOf.get(node) + 2; row < rowOf.get(last) + 1; row += 1) {
+      addBorder(cells, row, spine, 'right');
+    }
+    for (const child of node.children) {
+      addBorder(cells, rowOf.get(child) + 1, spine + 1, 'top',
+        child.style.link_color, child.style.link);
+    }
+  }
+
+  return { rows: rowHeights.length, cols: colWidths.length, colWidths, rowHeights, cells, warnings, fallbackToImage: false };
 }
 
 function addBorder(cells, row, col, edge, color = null, lineType = null) {

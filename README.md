@@ -167,6 +167,7 @@ hwpx-studio extract 기준문서.hwpx -o my.json --report report.md
 | 스타일 미사용 문서의 레벨 복원 | 확인(합성 데이터) |
 | 도식 표의 XML 구조·연결선 배치 | 확인 (`tests/test_diagram.py`) |
 | 노드별 배경색·글자색·테두리색·점선 연결선 | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
+| 상자가 많을 때 세로 목록형 자동 전환(폭이 늘지 않음) | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
 | Mermaid·SVG·HTML 도식 읽기(구조·색·점선) | 확인 (`tests/test_capture.py`) |
 | 그림(PNG·스캔)에서 도식 읽기 | 미구현 — AI에게 받아쓰게 하는 우회는 `docs/diagram-guide.md` §4 |
 | 한글 화면에서 한 변 테두리 연결선 표시 | 확인(한글 모바일 뷰어) — `prototypes/README.md` |

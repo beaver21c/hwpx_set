@@ -85,9 +85,19 @@ def test_all_columns_are_uniform_width(policy):
     assert len(set(round(w, 6) for w in grid.col_widths_mm)) == 1
 
 
-def test_wide_diagram_falls_back_to_image(policy):
+def test_too_many_siblings_switch_to_the_side_layout(policy):
+    """가로로 안 들어가면 이미지로 밀어내지 말고 세로 목록형으로 바꾼다."""
     lines = ["총괄"] + [f"  부서{i}" for i in range(12)]
-    grid = build_grid(parse_block("type=org width=60", lines), policy)
+    grid = build_grid(parse_block("type=org", lines), policy)
+    assert not grid.fallback_to_image
+    assert grid.total_width_mm <= policy["diagram"]["max_width_mm"] + 0.01
+    assert grid.rows > grid.cols                      # 가로가 아니라 세로로 길어진다
+    assert any("세로 목록형" in w for w in grid.warnings)
+
+
+def test_diagram_still_falls_back_to_image_when_even_side_cannot_fit(policy):
+    lines = ["총괄", "  가국", "    가과", "      가팀", "        가반"]
+    grid = build_grid(parse_block("type=org layout=side width=20", lines), policy)
     assert grid.fallback_to_image
     assert grid.warnings
 
@@ -231,3 +241,73 @@ def test_diagram_table_has_no_outer_frame(policy, tmp_path):
     block = re.search(rf'<hh:borderFill id="{ref}".*?</hh:borderFill>', header, re.S).group()
     edges = re.findall(r'<hh:(?:left|right|top|bottom)Border type="(\w+)"', block)
     assert set(edges) == {"NONE"}, f"표 바깥 테두리가 켜져 있음: {edges}"
+
+
+# ──────────────────────────────────────────────────────────────
+# 세로 목록형 배치(M3)
+# ──────────────────────────────────────────────────────────────
+SIDE = """원장
+  기획조정실
+    기획팀
+    예산팀
+  감사실 {link=dash}"""
+
+
+def side_grid(policy, header="type=org layout=side", lines=None):
+    return build_grid(parse_block(header, (lines or SIDE).splitlines()), policy)
+
+
+def test_side_layout_stacks_boxes_one_per_row(policy):
+    grid = side_grid(policy)
+    rows = [c.row for c in grid.cells if c.text]
+    assert len(rows) == len(set(rows)) == 5           # 상자마다 자기 행
+    assert all(c.row_span == 2 for c in grid.cells if c.text)
+
+
+def test_side_layout_indents_by_depth(policy):
+    b = boxes(side_grid(policy))
+    assert b["원장"].col == 0
+    assert b["기획조정실"].col == 2
+    assert b["기획팀"].col == 4
+    assert b["감사실"].col == 2
+
+
+def test_side_layout_width_does_not_grow_with_box_count(policy):
+    narrow = side_grid(policy, lines="본부\n" + "\n".join(f"  국{i}" for i in range(3)))
+    wide = side_grid(policy, lines="본부\n" + "\n".join(f"  국{i}" for i in range(30)))
+    assert narrow.total_width_mm == wide.total_width_mm
+    assert wide.rows > narrow.rows
+
+
+def test_side_connectors_meet_the_box_centres(policy):
+    """세로선은 자식 중심에서 끝나고, 가로 이음선은 그 지점에서 상자로 들어간다."""
+    grid = side_grid(policy)
+    b = boxes(grid)
+    spine = {(c.row, c.col) for c in grid.cells if not c.text and "right" in c.borders}
+    stubs = {(c.row, c.col) for c in grid.cells if not c.text and "top" in c.borders}
+
+    for name in ("기획조정실", "감사실"):
+        centre = b[name].row + 1                      # 두 행 중 아래 행의 위쪽 = 중심
+        assert (centre, 1) in stubs                   # 이음선은 세로선(0열) 다음 칸
+        assert (centre - 1, 0) in spine               # 세로선은 그 지점까지 내려온다
+
+    deep = b["기획팀"].row + 1
+    assert (deep, 3) in stubs                         # 한 단계 안쪽 세로선에서 나온다
+    assert (deep - 1, 2) in spine
+
+
+def test_side_layout_keeps_node_styles(policy):
+    grid = side_grid(policy, lines="원장 {fill=#1F3864 color=#FFF}\n  감사실 {link=dash}")
+    b = boxes(grid)
+    assert b["원장"].fill == "#1F3864" and b["원장"].text_color == "#FFFFFF"
+    assert any(c.border_type == "DASH" for c in grid.cells if not c.text)
+
+
+def test_side_layout_reaches_the_document(policy, tmp_path):
+    out = tmp_path / "side.hwpx"
+    spec = parse_block("type=org layout=side", SIDE.splitlines())
+    build_document(policy, [{"type": "diagram", "spec": spec.to_dict()}], str(out))
+    with zipfile.ZipFile(str(out)) as zf:
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+    assert "원장" in section and "기획팀" in section
+    assert re.search(r'<hp:cellSpan colSpan="\d+" rowSpan="2"', section)
