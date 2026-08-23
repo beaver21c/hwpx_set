@@ -185,5 +185,6 @@ HWPX_LEGACY_GENERATOR=/path/to/hwpx_generator.py pytest tests/test_parity.py
 - `docs/index.html` — 웹 앱(브라우저 변환기)
 - `docs/writing-guide.md` — 본문 작성법
 - `docs/diagram-guide.md` — 도식 작성법
+- `docs/diagram-capture-review.md` — 문서·웹 도식을 인식해 표로 재현하는 도구 검토
 - `docs/profile-spec.md` — 프로파일 JSON 규격
 - `docs/spec.md` — 설계 명세(원안)
