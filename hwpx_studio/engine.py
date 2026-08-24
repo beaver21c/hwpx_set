@@ -126,6 +126,7 @@ def plan_ids(header_xml: str, profile: Dict[str, Any],
     ids = IdMap()
     keys = [lv["key"] for lv in profile["levels"]]
     keys += ["table_top", "table_mid", "table_left", "body", "diagram", "diagram_root"]
+    keys += ["footnote"]
     keys += list(extra_keys or [])
 
     for key in keys:
@@ -146,7 +147,7 @@ def plan_ids(header_xml: str, profile: Dict[str, Any],
     for lv in profile["levels"]:
         ids.styles[lv["key"]] = sid
         sid += 1
-    for key in ("table_top", "table_mid", "table_left", "body"):
+    for key in ("table_top", "table_mid", "table_left", "body", "footnote"):
         ids.styles[key] = sid
         sid += 1
     # 도식 셀은 별도 스타일 없이 표(중간) 스타일을 쓴다
@@ -187,6 +188,7 @@ def _style_cfgs(profile: Dict[str, Any],
         "color": dia.get("root_color", "#FFFFFF"), "left_pt": 0, "indent_pt": 0,
         "spacing_below_pt": 0, "line_spacing": 130, "align": "CENTER",
     }))
+    out.append(("footnote", profile["footnote"]))
     for key in (extra_keys or []):
         out.append((key, _diagram_text_cfg(profile, key.split(":", 1)[-1])))
     return out
@@ -449,16 +451,47 @@ def _add_paragraph(doc, sec, item, profile, ids: IdMap, numbering: _Numbering) -
     key = item.get("key", "body")
     lv = level_by_key(profile, key)
     text = str(item.get("text", ""))
+    shift = 0
     if lv is not None:
         prefix = str(lv.get("prefix", ""))
         if prefix.startswith("AUTO_"):
             prefix = numbering.next_prefix(key, prefix)
         text = f"{prefix}{text}"
+        shift = len(prefix)
     elif key == "body" and profile["body"].get("first_line_indent_pt"):
         pass  # 첫 줄 들여쓰기는 paraPr에서 처리
     sid, cid, pid = ids.refs(key if (lv is not None or key in ids.styles) else "body")
-    doc.add_paragraph(text, section=sec, style_id_ref=sid,
-                      char_pr_id_ref=cid, para_pr_id_ref=pid)
+
+    notes = item.get("notes") or []
+    if not notes:
+        doc.add_paragraph(text, section=sec, style_id_ref=sid,
+                          char_pr_id_ref=cid, para_pr_id_ref=pid)
+        return
+    _add_paragraph_with_notes(doc, sec, text, notes, shift, (sid, cid, pid), ids)
+
+
+def _add_paragraph_with_notes(doc, sec, text: str, notes: Sequence[Dict[str, Any]],
+                              shift: int, refs: Tuple[int, int, int], ids: IdMap) -> None:
+    """각주가 달린 문단. 번호가 놓일 자리에서 run을 끊어 각주를 붙인다.
+
+    한글은 각주를 '문단 안 어느 run 뒤'에 매다는 방식이라, 번호 자리를 지키려면
+    앞 토막을 먼저 넣고 각주를 붙인 뒤 나머지를 새 run으로 이어야 한다.
+    번호 자체는 한글이 문서 순서대로 매기므로 여기서 정하지 않는다.
+    """
+    sid, cid, pid = refs
+    marks = sorted(min(max(int(n.get("offset", 0)) + shift, 0), len(text)) for n in notes)
+    order = sorted(range(len(notes)),
+                   key=lambda i: min(max(int(notes[i].get("offset", 0)) + shift, 0), len(text)))
+
+    para = doc.add_paragraph(text[:marks[0]], section=sec, style_id_ref=sid,
+                             char_pr_id_ref=cid, para_pr_id_ref=pid)
+    for pos, idx in enumerate(order):
+        para.add_footnote(str(notes[idx].get("text", "")),
+                          char_pr_id_ref=ids.chars["footnote"])
+        end = marks[pos + 1] if pos + 1 < len(marks) else len(text)
+        chunk = text[marks[pos]:end]
+        if chunk:
+            para.add_run(chunk, char_pr_id_ref=cid)
 
 
 def _add_content_table(doc, sec, item, profile, table_plans) -> None:

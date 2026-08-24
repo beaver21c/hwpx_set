@@ -201,3 +201,37 @@ def test_standalone_single_file_works(browser, tmp_path):
     page.wait_for_timeout(200)
     assert ":::diagram" in page.input_value("#body-text")
     assert problems == []
+
+
+def test_footnote_survives_the_browser_build(browser, server, tmp_path):
+    """웹에서 만든 문서에도 각주가 8pt 회색으로 들어가야 한다."""
+    import re
+    import zipfile
+
+    page, problems = open_page(browser, server)
+    page.fill("#body-text",
+              "□ 근거가 있는 문장이다[^1]\n○ 두 번째 항목\n\n[^1]: 통계청(2024).\n")
+    with page.expect_download() as download:
+        page.click("#build")
+    saved = tmp_path / "footnote.hwpx"
+    download.value.save_as(str(saved))
+
+    with zipfile.ZipFile(str(saved)) as zf:
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+        header = zf.read("Contents/header.xml").decode("utf-8")
+    note = re.search(r"<hp:footNote .*?</hp:footNote>", section, re.S)
+    assert note and "통계청(2024)." in note.group()
+    assert "[^1]" not in section                      # 자리표는 본문에 남지 않는다
+    char_id = re.search(r'<hh:style id="\d+"[^>]*name="각주"[^>]*charPrIDRef="(\d+)"',
+                        header).group(1)
+    char = re.search(rf'<hh:charPr id="{char_id}".*?</hh:charPr>', header, re.S).group()
+    assert 'height="800"' in char and 'textColor="#808080"' in char
+    assert problems == []
+
+
+def test_footnote_position_is_reported_in_page(browser, server):
+    page, _ = open_page(browser, server)
+    page.fill("#body-text", "□ 문장이다.[^1]\n○ 둘\n\n[^1]: 내용\n")
+    page.click("#check")
+    page.wait_for_timeout(200)
+    assert "마침표 앞에 붙일 것" in page.inner_text("#issues")

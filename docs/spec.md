@@ -132,7 +132,7 @@ hwpx-studio/
 │   ├── diagram.py                 # :::diagram 블록 → 표/이미지
 │   ├── extractor.py               # hwpx → 프로파일 JSON
 │   ├── preview.py                 # HTML 근사 미리보기
-│   ├── lint.py                    # 계층 균형·기호 중복·온점 검사
+│   ├── lint.py                    # 계층 균형·기호 중복·온점·각주 번호 자리 검사
 │   ├── export_skill.py            # 프로파일 → 스킬 폴더
 │   └── cli.py
 ├── profiles/
@@ -286,7 +286,7 @@ hwpx-studio/
 7. 출력: JSON + `extract_report.md`(클러스터별 예시·빈도·근거). 사용자 확인 후 저장
 - 한글 번호매기기 기능 문서(`hh:heading type=NUMBER|BULLET`)는 `"prefix":"UNKNOWN_AUTO"` 표시 [논리적 추론]
 
-### 8.5 lint.py — 계층 균형(`rules.min_children`), 기호 중복, 온점, 머릿글(경고), 표·도식 앞뒤 빈 줄. `--strict` 시 오류면 중단
+### 8.5 lint.py — 계층 균형(`rules.min_children`), 기호 중복, 온점, 머릿글, 각주 번호 자리(`rules.footnote_position`), 표·도식 앞뒤 빈 줄. 모두 경고. `--strict` 시 오류면 중단
 ### 8.6 preview.py — `render_layout_preview()` 래퍼. 고지: "근사 미리보기. 글꼴·줄바꿈·도식 연결선은 한글 뷰어에서 확인"
 ### 8.7 export_skill.py — 프로파일 → `SKILL.md`(레벨표·마커·균형 규칙 치환) + `scripts/build.py`(`--standalone`: 엔진+파서+프로파일 1파일 인라인) + `prompt.txt`(타 AI용 300자 지시문)
 ### 8.8 cli.py

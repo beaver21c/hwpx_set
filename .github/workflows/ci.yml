@@ -52,6 +52,7 @@ jobs:
           mkdir -p out
           hwpx-studio build examples/input_outline.md   -p policy-default -o out/개조식_예제.hwpx --preview out/개조식_예제.html
           hwpx-studio build examples/input_narrative.md -p narrative      -o out/서술식_예제.hwpx
+          hwpx-studio build examples/input_footnote.md  -p policy-default -o out/각주_예제.hwpx
           hwpx-studio build examples/input_diagram.md        -p policy-default -o out/도식_예제.hwpx --no-lint
           hwpx-studio build examples/input_diagram_styled.md -p policy-default -o out/도식_색지정_예제.hwpx --no-lint
           hwpx-studio build examples/input_diagram_side.md   -p policy-default -o out/도식_세로목록형_예제.hwpx --no-lint

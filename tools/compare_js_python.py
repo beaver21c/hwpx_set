@@ -41,6 +41,7 @@ CASES = [
     ("tests/fixtures/diagram_styled.md", "policy-default"),
     ("tests/fixtures/diagram_side.md", "policy-default"),
     ("tests/fixtures/diagram_strategy.md", "policy-default"),
+    ("tests/fixtures/footnote.md", "policy-default"),
     ("examples/input_narrative.md", "narrative"),
 ]
 
@@ -119,6 +120,20 @@ def cell_designs(path: Path) -> list:
         used = [designs.get(i) for i in re.findall(r'borderFillIDRef="(\d+)"', tbl)]
         out.append(sorted({d for d in used if d and (d[0] or d[1])},
                           key=lambda d: (d[0] or "", d[1])))
+    return out
+
+
+def footnotes(path: Path) -> list:
+    """(번호, 매김표 문자, 각주 본문) 목록 — 각주 재현 비교용."""
+    with zipfile.ZipFile(str(path)) as zf:
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+    out = []
+    for note in re.findall(r"<hp:footNote .*?</hp:footNote>", section, re.S):
+        head = re.search(r'number="(\d+)" suffixChar="(\d+)"', note)
+        body = re.search(r"<hp:t>(.*?)</hp:t>", note, re.S)
+        num = re.search(r'<hp:autoNum num="(\d+)" numType="(\w+)"', note)
+        out.append((head.group(1), head.group(2), num.groups() if num else None,
+                    body.group(1) if body else ""))
     return out
 
 
@@ -208,6 +223,11 @@ def main() -> int:
                 failures.append(f"{label}: 셀 디자인(색·테두리) 불일치\n"
                                 f"    py={py_designs}\n    js={js_designs}")
 
+            py_notes, js_notes = footnotes(py_out), footnotes(js_out)
+            if py_notes != js_notes:
+                failures.append(f"{label}: 각주 불일치\n"
+                                f"    py={py_notes}\n    js={js_notes}")
+
             py_tables, js_tables = table_shapes(py_out), table_shapes(js_out)
             if py_tables != js_tables:
                 failures.append(f"{label}: 표·도식 구조 불일치\n"
@@ -215,7 +235,7 @@ def main() -> int:
 
             if not failures:
                 print(f"  ✔ {label}: 스타일 {len(py_styles)}개 · 텍스트 {len(py_texts)}개 · "
-                      f"표 {len(py_tables)}개 · 셀 디자인 "
+                      f"표 {len(py_tables)}개 · 각주 {len(py_notes)}개 · 셀 디자인 "
                       f"{sum(len(d) for d in py_designs)}종 일치")
 
         compare_capture(failures)

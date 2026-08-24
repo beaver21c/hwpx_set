@@ -87,6 +87,20 @@ DEFAULT_PROFILE: Dict[str, Any] = {
                      align="LEFT", indent_pt=12, prefix="· "),
     },
     "image": {"default_width_mm": 120, "treat_as_char": True},
+    # 각주. 한글이 '각주' 스타일을 이름으로 찾으므로 name/eng_name은 고정값을 쓴다.
+    "footnote": {
+        "name": "각주",
+        "eng_name": "Footnote",
+        "size_pt": 8,
+        "bold": False,
+        "font": "light",
+        "color": "#808080",
+        "left_pt": 0,
+        "indent_pt": 0,
+        "spacing_below_pt": 0,
+        "line_spacing": 130,
+        "align": "JUSTIFY",
+    },
     "diagram": {
         "render": "table",           # table | image
         "box_fill": "#DCE6F1",
@@ -110,6 +124,9 @@ DEFAULT_PROFILE: Dict[str, Any] = {
         # 레벨 key → 본문 앞머리에 있어야 할 정규식(예: 네모의 【분류】). 없으면 검사 안 함
         "head_pattern": {},
         "period_policy": "single_sentence_no_period",
+        # 각주 번호를 문장 끝 마침표의 앞에 두는가 뒤에 두는가.
+        # before_period(국내 학술·정부 보고서 관행) | after_period(시카고식) | off
+        "footnote_position": "before_period",
     },
     # 문서 끝에 삽입할 서명 문단(선택). 공개 도구 기본값은 비활성.
     "signature": {"text": "", "size_pt": 5, "color": "#FFFFFF"},
@@ -260,6 +277,24 @@ def validate_profile(profile: Dict[str, Any]) -> List[str]:
     dia = profile.get("diagram") or {}
     if dia.get("render") not in ("table", "image"):
         errors.append(f"diagram.render는 table|image 중 하나여야 함: {dia.get('render')!r}")
+
+    fn = profile.get("footnote") or {}
+    if fn.get("color") and not _is_hex_color(fn["color"]):
+        errors.append(f"footnote.color는 #RRGGBB 형식이어야 함: {fn['color']!r}")
+    if fn.get("align") not in _VALID_ALIGN:
+        errors.append(f"footnote.align 값이 올바르지 않음: {fn.get('align')!r}")
+    if fn.get("font") not in _VALID_FONT_KEYS:
+        errors.append(f"footnote.font는 {sorted(_VALID_FONT_KEYS)} 중 하나여야 함")
+    try:
+        if float(fn.get("size_pt", 0)) <= 0:
+            errors.append("footnote.size_pt는 0보다 커야 함")
+    except (TypeError, ValueError):
+        errors.append("footnote.size_pt가 숫자가 아님")
+
+    position = (profile.get("rules", {}) or {}).get("footnote_position", "before_period")
+    if position not in ("before_period", "after_period", "off"):
+        errors.append("rules.footnote_position은 before_period|after_period|off "
+                      f"중 하나여야 함: {position!r}")
 
     for key, need in (profile.get("rules", {}).get("min_children") or {}).items():
         if key not in seen_keys:

@@ -155,7 +155,7 @@ python skills/build.py -o ~/.claude/skills      # 조립 + 설치
 | `build` | 마커 텍스트 → hwpx (검사 후 생성, `--preview`로 HTML 동시 생성) |
 | `extract` | 기존 hwpx → 프로파일 JSON + 근거 리포트 |
 | `init` | 프로파일 새로 만들기(내장 프로파일 기준) |
-| `lint` | 본문 규칙 검사(계층 균형·온점·기호·머릿글·빈 줄) |
+| `lint` | 본문 규칙 검사(계층 균형·온점·기호·머릿글·각주 번호 자리·빈 줄) |
 | `preview` | hwpx → HTML 근사 미리보기 |
 | `diagram` | 도식만 단독 생성 (`"대표 > 기획부, 운영부"`) |
 | `capture` | 남의 도식(Mermaid·SVG·HTML) → 도식 블록 (`--hwpx`로 문서까지) |
@@ -167,9 +167,11 @@ python skills/build.py -o ~/.claude/skills      # 조립 + 설치
 # 사업 추진 현황
 ## 추진 개요
 □ 추진 배경 및 목적
-○ 제도 개선 요구가 지속 제기되어 개선 방안을 마련
+○ 제도 개선 요구가 지속 제기되어 개선 방안을 마련[^1]
 - 기존 절차의 처리 기간이 길어 이용자 불편이 누적
 ※ 세부 내용은 별도 자료로 정리
+
+[^1]: 국무조정실(2024), 「규제혁신 추진계획」.
 
 | 구분 | 목표 | 실적 |
 |---|---|---|
@@ -182,10 +184,11 @@ python skills/build.py -o ~/.claude/skills      # 조립 + 설치
 :::
 ```
 
+- 각주는 `[^1]`을 근거가 되는 말 뒤에 붙이고 내용은 `[^1]: …` 줄로 적는다. **8pt 회색**으로 들어가고 번호는 한글이 매긴다
 - 도식 상자에 색을 줄 수 있다: `대표 {fill=#C00000 color=#FFFFFF}`, 점선 연결선은 `{link=dash}`
 - 마커는 프로파일에서 바꿀 수 있고, 레벨 개수도 자유롭다
 - `Ⅰ.` `1.` 같은 번호는 도구가 붙인다
-- 자세한 규칙: `docs/writing-guide.md`, 도식: `docs/diagram-guide.md`
+- 자세한 규칙: `docs/writing-guide.md`, 도식: `docs/diagram-guide.md`, 각주: `docs/footnote-guide.md`
 
 ## 내장 프로파일
 
@@ -225,6 +228,9 @@ hwpx-studio extract 기준문서.hwpx -o my.json --report report.md
 | 상자가 많을 때 세로 목록형 자동 전환(폭이 늘지 않음) | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
 | 전략체계도(미션·비전·핵심가치·전략과제 단 배치) | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
 | Mermaid·SVG·HTML 도식 읽기(구조·색·점선) | 확인 (`tests/test_capture.py`) |
+| 각주(쪽 아래·자동 번호·8pt 회색) | 확인 (`tests/test_footnote.py`, 표준 판독기로 재확인 + 두 엔진 대조) |
+| 각주 번호 자리 검사(붙여쓰기·마침표·인용부호·제목) | 확인 (`tests/test_footnote.py`) |
+| 미주 | 미구현 — `docs/footnote-guide.md` §5 |
 | 그림(PNG·스캔)에서 도식 읽기 | 미구현 — AI에게 받아쓰게 하는 우회는 `docs/diagram-guide.md` §4 |
 | 한글 화면에서 한 변 테두리 연결선 표시 | 확인(한글 모바일 뷰어) — `prototypes/README.md` |
 | 한글로 직접 작성한 실제 문서의 추출 정확도 | 확인(1건) — 7레벨 전부 복원, 아래 참조 |
@@ -247,6 +253,7 @@ HWPX_LEGACY_GENERATOR=/path/to/hwpx_generator.py pytest tests/test_parity.py
 - `docs/index.html` — 웹 앱(브라우저 변환기)
 - `docs/writing-guide.md` — 본문 작성법
 - `docs/diagram-guide.md` — 도식 작성법
+- `docs/footnote-guide.md` — 각주 다는 법과 번호 자리
 - `docs/diagram-capture-review.md` — 문서·웹 도식을 인식해 표로 재현하는 도구 검토
 - `docs/profile-spec.md` — 프로파일 JSON 규격
 - `skills/hwpx-report-studio/` — 에이전트 스킬(집필 규칙 + 도식)

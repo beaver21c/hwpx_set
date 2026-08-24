@@ -32,6 +32,7 @@ HOUSE_RULES = {
     "min_children": {"title2": 2, "L1": 2, "L2": 2},
     "head_pattern": {"L1": r"^【[^】]+】", "L2": r"^\([^)]+\)"},
     "period_policy": "single_sentence_no_period",
+    "footnote_position": "before_period",      # 각주 번호는 마침표 앞(국내 관행)
 }
 
 

@@ -51,13 +51,21 @@ export const DEFAULT_PROFILE = {
     left: { ...TABLE_CELL_DEFAULTS, name: '표(왼쪽)', eng_name: 'Table(Left)', align: 'LEFT', indent_pt: 12, prefix: '· ' },
   },
   image: { default_width_mm: 120, treat_as_char: true },
+  footnote: {
+    name: '각주', eng_name: 'Footnote', size_pt: 8, bold: false, font: 'light',
+    color: '#808080', left_pt: 0, indent_pt: 0, spacing_below_pt: 0,
+    line_spacing: 130, align: 'JUSTIFY',
+  },
   diagram: {
     render: 'table', box_fill: '#DCE6F1', box_border: '#1F3864', box_color: '#000000',
     root_fill: '#1F3864', root_color: '#FFFFFF', line_color: '#1F3864', line_width_mm: 0.3,
     font_size_pt: 11, col_width_mm: 28, col_gap_mm: 6, grid_resolution: 6,
     row_height_mm: 9, row_gap_mm: 7, max_width_mm: 160,
   },
-  rules: { min_children: {}, period_policy: 'single_sentence_no_period' },
+  rules: {
+    min_children: {}, period_policy: 'single_sentence_no_period',
+    footnote_position: 'before_period',
+  },
 };
 
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -101,6 +109,8 @@ export const bodyLevels = (profile) =>
 const IMAGE_RE = /^!\[[^\]]*\]\(([^)]+)\)\s*$/;
 const TABLE_SEP_RE = /^\|[\s:|-]+\|$/;
 const FENCE_RE = /^:::\s*(?:diagram)?\s*(.*)$/;
+const FOOTNOTE_REF_RE = /\[\^([^\]\s]+)\]/g;
+const FOOTNOTE_DEF_RE = /^\[\^([^\]\s]+)\]:\s*(.*)$/;
 
 export function parseText(text, profile) {
   const markers = profile.levels
@@ -113,6 +123,7 @@ export function parseText(text, profile) {
   const items = [];
   const lineOf = [];
   const warnings = [];
+  const notes = new Map();          // 라벨 → { text, line, used }
   const push = (item, line) => { items.push(item); lineOf.push(line); };
 
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
@@ -123,6 +134,22 @@ export function parseText(text, profile) {
     const stripped = raw.trim();
 
     if (!stripped) { push({ type: 'blank' }, lineno); i += 1; continue; }
+
+    const definition = FOOTNOTE_DEF_RE.exec(stripped);
+    if (definition) {
+      const label = definition[1];
+      const bodyText = definition[2].trim();
+      if (notes.has(label)) warnings.push(`${lineno}행: 각주 [^${label}]의 내용이 두 번 적힘 → 뒤엣것을 씀`);
+      if (!bodyText) warnings.push(`${lineno}행: 각주 [^${label}]의 내용이 비어 있음`);
+      notes.set(label, { text: bodyText, line: lineno, used: 0 });
+      const nextBlank = i + 1 >= lines.length || !lines[i + 1].trim();
+      if (nextBlank && items.length && items[items.length - 1].type === 'blank') {
+        items.pop();
+        lineOf.pop();
+      }
+      i += 1;
+      continue;
+    }
 
     const fence = stripped.startsWith(':::') ? FENCE_RE.exec(stripped) : null;
     if (fence) {
@@ -188,7 +215,63 @@ export function parseText(text, profile) {
     }
     i += 1;
   }
+  resolveFootnotes(items, lineOf, warnings, notes);
   return { items, lineOf, warnings };
+}
+
+/** 본문의 `[^라벨]` 자리표를 각주 내용과 잇는다(parser.py의 _resolve_footnotes). */
+function resolveFootnotes(items, lineOf, warnings, notes) {
+  items.forEach((item, idx) => {
+    const line = lineOf[idx] ?? idx + 1;
+    const hasRef = (s) => { FOOTNOTE_REF_RE.lastIndex = 0; return FOOTNOTE_REF_RE.test(String(s)); };
+    if (item.type === 'table') {
+      if ((item.data || []).some(hasRef)) warnings.push(`${line}행: 표 안에는 각주를 달 수 없음 → 표 아래 문단에 달 것`);
+      return;
+    }
+    if (item.type === 'diagram') {
+      if ((item.spec?.lines || []).some(hasRef)) warnings.push(`${line}행: 도식 상자 안에는 각주를 달 수 없음 → 도식 아래 문단에 달 것`);
+      return;
+    }
+    if (item.type !== 'para') return;
+    const text = String(item.text || '');
+    if (!text.includes('[^')) return;
+    const split = splitNotes(text, notes, warnings, line);
+    item.text = split.text;
+    if (split.found.length) item.notes = split.found;
+  });
+
+  for (const [label, note] of notes) {
+    if (!note.used) warnings.push(`${note.line}행: 각주 [^${label}]을 본문에서 부르지 않음 → 만들지 않음`);
+  }
+}
+
+function splitNotes(text, notes, warnings, line) {
+  const out = [];
+  const found = [];
+  let pos = 0;
+  FOOTNOTE_REF_RE.lastIndex = 0;
+  let m = FOOTNOTE_REF_RE.exec(text);
+  while (m) {
+    out.push(text.slice(pos, m.index));
+    pos = m.index + m[0].length;
+    const label = m[1];
+    const note = notes.get(label);
+    if (!note) {
+      warnings.push(`${line}행: 각주 [^${label}]의 내용을 찾지 못함 (\`[^${label}]: 내용\` 줄이 없음) → 본문에 그대로 남김`);
+      out.push(m[0]);
+    } else {
+      note.used += 1;
+      if (note.used > 1) warnings.push(`${line}행: 각주 [^${label}]을 두 번 이상 부름 → 한글에는 같은 각주를 다시 못 쓰므로 따로 만들어짐`);
+      const before = out.join('');
+      found.push({
+        label, text: note.text, offset: before.length,
+        before: before.slice(-1), after: text.slice(pos, pos + 1),
+      });
+    }
+    m = FOOTNOTE_REF_RE.exec(text);
+  }
+  out.push(text.slice(pos));
+  return { text: out.join(''), found };
 }
 
 function matchMarker(text, markers) {
@@ -218,7 +301,9 @@ export function lintItems(items, profile, lineOf = [], parserWarnings = []) {
   const autoKeys = new Set(profile.levels.filter((lv) => String(lv.prefix).startsWith('AUTO_')).map((lv) => lv.key));
   const minChildren = profile.rules?.min_children || {};
   const policy = profile.rules?.period_policy || 'single_sentence_no_period';
+  const position = profile.rules?.footnote_position || 'before_period';
   const issues = [];
+  let noteNo = 0;
 
   for (const text of parserWarnings) {
     const m = /^(\d+)행: (.*)$/.exec(text);
@@ -249,6 +334,11 @@ export function lintItems(items, profile, lineOf = [], parserWarnings = []) {
     }
 
     if (!autoKeys.has(key)) issues.push(...periodIssues(text, line, policy));
+
+    for (const note of item.notes || []) {
+      noteNo += 1;
+      issues.push(...footnoteIssues(note, noteNo, line, autoKeys.has(key), position));
+    }
 
     const need = minChildren[key];
     if (need && depth !== undefined) {
@@ -287,6 +377,33 @@ export function lintItems(items, profile, lineOf = [], parserWarnings = []) {
 }
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const CLOSERS = '"\'”’」』)]》〉';
+const SENTENCE_END = '.。!?';
+
+/** 각주 번호를 놓은 자리 검사(lint.py의 _footnote_issues). */
+function footnoteIssues(note, number, line, inHeading, position) {
+  const out = [];
+  const label = String(note.label ?? '');
+  const before = String(note.before ?? '');
+  const after = String(note.after ?? '');
+  const where = `각주 ${number}`;
+  const warn = (message) => out.push({ severity: 'warn', line, code: 'footnote', message });
+
+  if (inHeading) warn(`${where}: 제목에 각주를 닮 → 본문 문단으로 옮길 것`);
+  if (!before) warn(`${where}: 문단 맨 앞에 번호가 옴 → 근거가 되는 말 뒤에 붙일 것`);
+  else if (!before.trim()) warn(`${where}: 번호 앞에 빈칸이 있음 → 앞말에 붙여 쓸 것`);
+  if (after && CLOSERS.includes(after)) warn(`${where}: 닫는 '${after}' 앞에 번호가 옴 → 인용을 닫은 뒤에 붙일 것`);
+  if (position === 'before_period' && before && SENTENCE_END.includes(before)) {
+    warn(`${where}: 마침표 뒤에 번호가 옴 → 마침표 앞에 붙일 것`);
+  } else if (position === 'after_period' && after && SENTENCE_END.includes(after)) {
+    warn(`${where}: 마침표 앞에 번호가 옴 → 마침표 뒤에 붙일 것`);
+  }
+  if (/^\d+$/.test(label) && Number(label) !== number) {
+    warn(`[^${label}]로 적었지만 문서 순서로는 ${number}번째 각주 → 번호는 한글이 매기므로 라벨과 다를 수 있음`);
+  }
+  return out;
+}
 
 function periodIssues(text, line, policy) {
   const stripped = text.trim();
@@ -966,6 +1083,7 @@ function styleConfigs(profile, textKeys = []) {
     color: dia.root_color, left_pt: 0, indent_pt: 0, spacing_below_pt: 0,
     line_spacing: 130, align: 'CENTER',
   }]);
+  out.push(['footnote', profile.footnote]);
   for (const key of textKeys) out.push([key, diagramTextCfg(profile, key.slice(4))]);
   return out;
 }
@@ -976,14 +1094,15 @@ function planIds(headerXml, profile, diagramFills, textKeys = []) {
   const bfId = nextId(headerXml, 'hh:borderFill', 1);
 
   const ids = { styles: {}, chars: {}, paras: {}, borderBase: bfId, borderHeader: bfId + 1, diagramFills: new Map() };
-  const keys = [...profile.levels.map((lv) => lv.key), 'table_top', 'table_mid', 'table_left', 'body', 'diagram', 'diagram_root', ...textKeys];
+  const keys = [...profile.levels.map((lv) => lv.key), 'table_top', 'table_mid', 'table_left',
+    'body', 'diagram', 'diagram_root', 'footnote', ...textKeys];
   for (const key of keys) {
     ids.chars[key] = charId; charId += 1;
     ids.paras[key] = paraId; paraId += 1;
   }
   let sid = 1;
   for (const lv of profile.levels) { ids.styles[lv.key] = sid; sid += 1; }
-  for (const key of ['table_top', 'table_mid', 'table_left', 'body']) { ids.styles[key] = sid; sid += 1; }
+  for (const key of ['table_top', 'table_mid', 'table_left', 'body', 'footnote']) { ids.styles[key] = sid; sid += 1; }
   ids.styles.diagram = ids.styles.table_mid;
   ids.styles.diagram_root = ids.styles.table_mid;
   for (const key of textKeys) ids.styles[key] = ids.styles.table_mid;
@@ -1090,10 +1209,52 @@ function makeIdGen() {
   return () => { n += 1; return n; };
 }
 
-function paraXml(nextIdFn, { para, style, char }, text) {
-  const content = text ? `<hp:t>${escapeXml(text)}</hp:t>` : '<hp:t/>';
+function paraXml(nextIdFn, { para, style, char }, text, runs = null) {
+  const inner = runs ?? `<hp:run charPrIDRef="${char}">${textXml(text)}</hp:run>`;
   return `<hp:p id="${nextIdFn()}" paraPrIDRef="${para}" styleIDRef="${style}" pageBreak="0"`
-    + ` columnBreak="0" merged="0"><hp:run charPrIDRef="${char}">${content}</hp:run></hp:p>`;
+    + ` columnBreak="0" merged="0">${inner}</hp:p>`;
+}
+
+const textXml = (text) => (text ? `<hp:t>${escapeXml(text)}</hp:t>` : '<hp:t/>');
+
+/**
+ * 각주 하나. 번호는 한글이 문서 순서대로 매기므로 여기서 넘겨받는다.
+ * engine.py가 python-hwpx로 만드는 모양과 같아야 한다(각주 스타일 + autoNum).
+ */
+function footNoteXml(nextIdFn, number, noteRefs, text) {
+  return '<hp:ctrl>'
+    + `<hp:footNote number="${number}" suffixChar="41" instid="${nextIdFn()}">`
+    + `<hp:subList ${SUBLIST_HEAD.replace('vertAlign="CENTER"', 'vertAlign="TOP"')}>`
+    + `<hp:p paraPrIDRef="${noteRefs.para}" styleIDRef="${noteRefs.style}" pageBreak="0"`
+    + ' columnBreak="0" merged="0" id="0">'
+    + `<hp:run charPrIDRef="${noteRefs.char}"><hp:ctrl>`
+    + `<hp:autoNum num="${number}" numType="FOOTNOTE">`
+    + '<hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar=")" supscript="0"/>'
+    + `</hp:autoNum></hp:ctrl>${textXml(text)}</hp:run></hp:p>`
+    + '</hp:subList></hp:footNote></hp:ctrl>';
+}
+
+/**
+ * 각주가 달린 문단의 run 묶음. 번호 자리에서 run을 끊어 각주를 매단다.
+ * python-hwpx가 '마지막 run 뒤'에 각주를 붙이는 것과 같은 모양이 되도록,
+ * 뒤따르는 글이 없으면 run을 새로 열지 않고 앞 run에 각주를 하나 더 단다.
+ */
+function noteRunsXml(nextIdFn, char, noteRefs, text, notes, shift, firstNumber) {
+  const at = (note) => Math.min(Math.max(Number(note.offset || 0) + shift, 0), text.length);
+  const marks = notes.map(at).sort((a, b) => a - b);
+  const order = notes.map((n, i) => [at(n), i]).sort((a, b) => a[0] - b[0]).map(([, i]) => i);
+
+  const runs = [{ text: text.slice(0, marks[0]), ctrls: [] }];
+  order.forEach((idx, pos) => {
+    runs[runs.length - 1].ctrls.push(
+      footNoteXml(nextIdFn, firstNumber + pos, noteRefs, String(notes[idx].text || '')));
+    const end = pos + 1 < marks.length ? marks[pos + 1] : text.length;
+    const chunk = text.slice(marks[pos], end);
+    if (chunk) runs.push({ text: chunk, ctrls: [] });
+  });
+  return runs
+    .map((r) => `<hp:run charPrIDRef="${char}">${textXml(r.text)}${r.ctrls.join('')}</hp:run>`)
+    .join('');
 }
 
 function cellXml(nextIdFn, { row, col, colSpan = 1, rowSpan = 1, width, height, borderFill, style, text, margin }) {
@@ -1249,6 +1410,7 @@ function buildSection(templateSection, profile, ids, items, grids) {
   const numbering = makeNumbering(profile);
   const levelByKey = new Map(profile.levels.map((lv) => [lv.key, lv]));
   let body = '';
+  let noteNumber = 1;              // 각주 번호는 문서 전체에서 이어진다
 
   items.forEach((item, index) => {
     if (item.type === 'blank') {
@@ -1262,11 +1424,22 @@ function buildSection(templateSection, profile, ids, items, grids) {
       const key = item.key || 'body';
       const level = levelByKey.get(key);
       let text = String(item.text ?? '');
+      let shift = 0;
       if (level) {
         const prefix = String(level.prefix || '');
-        text = (prefix.startsWith('AUTO_') ? numbering(key, prefix) : prefix) + text;
+        const resolved = prefix.startsWith('AUTO_') ? numbering(key, prefix) : prefix;
+        text = resolved + text;
+        shift = resolved.length;
       }
-      body += paraXml(nextIdFn, refs(ids, key), text);
+      const notes = item.notes || [];
+      if (notes.length) {
+        const runs = noteRunsXml(nextIdFn, refs(ids, key).char, refs(ids, 'footnote'),
+          text, notes, shift, noteNumber);
+        noteNumber += notes.length;
+        body += paraXml(nextIdFn, refs(ids, key), text, runs);
+      } else {
+        body += paraXml(nextIdFn, refs(ids, key), text);
+      }
     }
   });
 
