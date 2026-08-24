@@ -378,7 +378,6 @@ export function lintItems(items, profile, lineOf = [], parserWarnings = []) {
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const CLOSERS = '"\'”’」』)]》〉';
 const SENTENCE_END = '.。!?';
 
 /** 각주 번호를 놓은 자리 검사(lint.py의 _footnote_issues). */
@@ -393,7 +392,6 @@ function footnoteIssues(note, number, line, inHeading, position) {
   if (inHeading) warn(`${where}: 제목에 각주를 닮 → 본문 문단으로 옮길 것`);
   if (!before) warn(`${where}: 문단 맨 앞에 번호가 옴 → 근거가 되는 말 뒤에 붙일 것`);
   else if (!before.trim()) warn(`${where}: 번호 앞에 빈칸이 있음 → 앞말에 붙여 쓸 것`);
-  if (after && CLOSERS.includes(after)) warn(`${where}: 닫는 '${after}' 앞에 번호가 옴 → 인용을 닫은 뒤에 붙일 것`);
   if (position === 'before_period' && before && SENTENCE_END.includes(before)) {
     warn(`${where}: 마침표 뒤에 번호가 옴 → 마침표 앞에 붙일 것`);
   } else if (position === 'after_period' && after && SENTENCE_END.includes(after)) {

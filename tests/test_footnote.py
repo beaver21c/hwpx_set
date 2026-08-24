@@ -229,10 +229,23 @@ def test_space_before_the_number_is_flagged(policy):
                for m in codes(lint_text("□ 앞말 [^1]\n\n[^1]: 내용\n", policy)))
 
 
-def test_number_inside_a_quotation_is_flagged(policy):
-    issues = codes(lint_text('□ 그는 "말했다[^1]"고 한다\n\n[^1]: 내용\n', policy))
-    assert any("인용을 닫은 뒤에" in m for m in issues)
-    assert codes(lint_text('□ 그는 "말했다"[^1]고 한다\n\n[^1]: 내용\n', policy)) == []
+def test_both_sides_of_a_quotation_mark_are_left_alone(policy):
+    """각주가 인용문을 가리키는지 문장을 가리키는지는 도구가 알 수 없다 → 검사하지 않는다."""
+    inside = '□ 그는 "구조적 문제다[^1]"라고 한다\n\n[^1]: 내용\n'
+    outside = '□ 그는 "구조적 문제"[^1]라는 진단을 한다\n\n[^1]: 내용\n'
+    assert codes(lint_text(inside, policy)) == []
+    assert codes(lint_text(outside, policy)) == []
+
+
+def test_number_inside_a_quotation_lands_inside_the_quotation(policy):
+    """따옴표 안에 쓴 번호는 닫는 따옴표 앞에 그대로 놓여야 한다."""
+    items = parse_text('□ 그는 "구조적 문제다[^1]"라고 한다\n\n[^1]: 내용\n', policy).items
+    assert items[0]["text"] == '그는 "구조적 문제다"라고 한다'
+    section = part(build_document(policy, items).data, "Contents/section0.xml")
+    assert (section.index('<hp:t>□ 그는 "구조적 문제다</hp:t>')
+            < section.index("<hp:footNote ")
+            < section.index("</hp:footNote>")
+            < section.index('<hp:t>"라고 한다</hp:t>'))
 
 
 def test_note_on_a_heading_is_flagged(policy):

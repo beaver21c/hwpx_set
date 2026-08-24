@@ -133,8 +133,6 @@ def _count_children(paras, pos: int, depth: Optional[int], depth_of) -> int:
     return count
 
 
-#: 각주 번호가 뒤따라야 하는 닫는 부호 — 인용을 닫고 나서 번호를 단다
-_CLOSERS = "\"'”’」』)]》〉"
 _SENTENCE_END = ".。!?"
 
 
@@ -156,9 +154,6 @@ def _footnote_issues(note: Dict[str, Any], number: int, line: int,
     elif before.isspace():
         out.append(Issue("warn", line, "footnote",
                          f"{where}: 번호 앞에 빈칸이 있음 → 앞말에 붙여 쓸 것"))
-    if after and after in _CLOSERS:
-        out.append(Issue("warn", line, "footnote",
-                         f"{where}: 닫는 {after!r} 앞에 번호가 옴 → 인용을 닫은 뒤에 붙일 것"))
     if position == "before_period" and before and before in _SENTENCE_END:
         out.append(Issue("warn", line, "footnote",
                          f"{where}: 마침표 뒤에 번호가 옴 → 마침표 앞에 붙일 것"))
