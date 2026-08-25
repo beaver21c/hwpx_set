@@ -89,11 +89,9 @@ def _sample_text(form: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _readme(form: Dict[str, Any]) -> str:
-    name = form.get("name", "양식")
-    return f"""# {name} — 한글 문서 꾸러미
+README_TEMPLATE = """# {{name}} — 한글 문서 꾸러미
 
-이 폴더 하나로 **{name} 서식 그대로** 한글 문서(.hwpx)를 만든다.
+이 폴더 하나로 **{{name}} 서식 그대로** 한글 문서(.hwpx)를 만든다.
 
 ## 어떻게 서식이 지켜지나
 
@@ -128,7 +126,7 @@ AI(Claude·GPT·codex)에게는 이 폴더를 통째로 주고 "원고를 마커
 
 ## 마커
 
-{_marker_rows(form)}
+{{markers}}
 
 ## 공통 문법
 
@@ -137,7 +135,7 @@ AI(Claude·GPT·codex)에게는 이 폴더를 통째로 주고 "원고를 마커
 | (빈 줄) | 문단 사이 간격 |
 | `\\| 구분 \\| 값 \\|` | 표. 첫 행이 머리행. `\\|---\\|` 줄은 무시 |
 | `[표: 제목]` | 바로 다음 표의 제목 |
-| `{{cols=30,35,35}}` | 바로 다음 표의 열 너비 백분율 |
+| `{cols=30,35,35}` | 바로 다음 표의 열 너비 백분율 |
 | 셀 안 `<br>` | 셀 안에서 줄 나눔 |
 | `앞말[^1]` | 각주 번호 자리 |
 | `[^1]: 내용` | 각주 내용(문서 어디에 적어도 된다) |
@@ -151,23 +149,19 @@ AI(Claude·GPT·codex)에게는 이 폴더를 통째로 주고 "원고를 마커
 """
 
 
-def _skill_md(form: Dict[str, Any]) -> str:
-    name = form.get("name", "양식")
-    slug = _slug(name)
-    footnote = "각주는 근거가 되는 말 뒤에 `[^1]`로 단다. " if form.get("footnote") else ""
-    return f"""---
-name: {slug}
+SKILL_TEMPLATE = """---
+name: {{slug}}
 description: >-
-  {name} 서식 그대로 한글 문서(.hwpx)를 만든다. 마커를 붙인 텍스트로 본문을 쓰면
-  양식의 스타일·글꼴·자동 글머리표를 그대로 지킨 hwpx가 나온다. {footnote}'{name}',
+  {{name}} 서식 그대로 한글 문서(.hwpx)를 만든다. 마커를 붙인 텍스트로 본문을 쓰면
+  양식의 스타일·글꼴·자동 글머리표를 그대로 지킨 hwpx가 나온다. {{footnote}}'{{name}}',
   '이 양식으로', '한글 보고서', '.hwpx로 만들어줘' 요청 시 사용.
 ---
 
-# {name} 문서 만들기
+# {{name}} 문서 만들기
 
 ## 무엇을 하는 스킬인가
 
-`{name}` 양식 원본을 고치지 않고 본문만 갈아 끼워 한글 문서를 만든다. 서식을
+`{{name}}` 양식 원본을 고치지 않고 본문만 갈아 끼워 한글 문서를 만든다. 서식을
 흉내 내는 것이 아니라 **양식 파일 자체를 쓰기 때문에** 글꼴·자동 글머리표·
 번호매기기·쪽 설정이 원본 그대로다.
 
@@ -193,7 +187,7 @@ python read_hwpx.py 받은문서.hwpx -o 원고.md --report 추정근거.md
 
 ## 마커
 
-{_marker_rows(form)}
+{{markers}}
 
 **기호를 두 번 쓰지 않는다.** 위 표에서 '한글이 자동으로'라고 적힌 레벨은 마커만
 쓰고 본문에 기호를 또 적으면 안 된다. 이중으로 찍힌다.
@@ -204,7 +198,7 @@ python read_hwpx.py 받은문서.hwpx -o 원고.md --report 추정근거.md
 (빈 줄)            문단 사이 간격
 | 구분 | 값 |      표. 첫 행이 머리행
 [표: 제목]         바로 다음 표의 제목
-{{cols=30,35,35}}    바로 다음 표의 열 너비 백분율
+{cols=30,35,35}    바로 다음 표의 열 너비 백분율
 셀 안 <br>         셀 안에서 줄 나눔
 앞말[^1]           각주 번호 자리
 [^1]: 내용         각주 내용
@@ -231,11 +225,9 @@ python read_hwpx.py 받은문서.hwpx -o 원고.md --report 추정근거.md
 """
 
 
-def _agents_md(form: Dict[str, Any]) -> str:
-    name = form.get("name", "양식")
-    return f"""# {name} 한글 문서 만들기 (codex·GPT용)
+AGENTS_TEMPLATE = """# {{name}} 한글 문서 만들기 (codex·GPT용)
 
-이 폴더에는 `{name}` 양식으로 한글 문서(.hwpx)를 만드는 도구가 들어 있다.
+이 폴더에는 `{{name}}` 양식으로 한글 문서(.hwpx)를 만드는 도구가 들어 있다.
 
 ## 실행
 
@@ -257,7 +249,7 @@ python build_form.py 원고.md -o 결과.hwpx
 
 ## 마커
 
-{_marker_rows(form)}
+{{markers}}
 
 '한글이 자동으로'라고 적힌 레벨은 마커만 쓴다. 본문에 기호를 또 적으면 이중이 된다.
 
@@ -267,7 +259,7 @@ python build_form.py 원고.md -o 결과.hwpx
 (빈 줄)            문단 사이 간격
 | 구분 | 값 |      표. 첫 행이 머리행
 [표: 제목]         표 제목
-{{cols=30,35,35}}    열 너비 백분율
+{cols=30,35,35}    열 너비 백분율
 셀 안 <br>         셀 안 줄 나눔
 앞말[^1]           각주 번호 자리
 [^1]: 내용         각주 내용
@@ -282,18 +274,65 @@ python build_form.py 원고.md -o 결과.hwpx
 """
 
 
+#: 꾸러미에 들어가는 안내문 틀. `{{자리표}}`만 채운다.
+#: 웹(브라우저)도 같은 틀을 쓴다 — `tools/build_web.py`가 이 값을 그대로 옮긴다.
+TEMPLATES = {
+    "README.md": README_TEMPLATE,
+    "SKILL.md": SKILL_TEMPLATE,
+    "AGENTS.md": AGENTS_TEMPLATE,
+}
+
+
+def bundle_fields(form: Dict[str, Any]) -> Dict[str, str]:
+    """틀에 채워 넣을 값. 파이썬과 브라우저가 같은 값을 만들어야 한다."""
+    name = form.get("name") or "양식"
+    return {
+        "name": name,
+        "slug": _slug(name),
+        "markers": _marker_rows(form),
+        "footnote": ("각주는 근거가 되는 말 뒤에 `[^1]`로 단다. "
+                     if form.get("footnote") else ""),
+    }
+
+
+def render(template: str, fields: Dict[str, str]) -> str:
+    for key, value in fields.items():
+        template = template.replace("{{%s}}" % key, value)
+    return template
+
+
 def _slug(name: str) -> str:
-    """스킬 이름은 소문자·숫자·하이픈만 쓴다."""
+    """스킬 이름은 소문자·숫자·하이픈만 쓴다.
+
+    한글 이름은 남는 글자가 없어 모두 같은 값이 되어 버린다. 그러면 스킬 두 개를
+    깔 수 없다. 그래서 이름에서 뽑은 짧은 꼬리표를 붙인다.
+    """
     out = []
     for ch in name.lower():
-        if ch.isascii() and (ch.isalnum()):
+        if ch.isascii() and ch.isalnum():
             out.append(ch)
         elif ch in " _-.":
             out.append("-")
     slug = "".join(out).strip("-")
     while "--" in slug:
         slug = slug.replace("--", "-")
-    return slug or "hwpx-form"
+    # 너무 짧거나 숫자뿐이면 이름 구실을 못 한다
+    if len(slug) < 3 or slug.replace("-", "").isdigit():
+        return f"hwpx-form-{_tag(name)}"
+    return slug
+
+
+def _tag(name: str) -> str:
+    """이름에서 뽑는 짧고 안정된 꼬리표(FNV-1a 32비트). 브라우저 쪽과 같아야 한다."""
+    value = 0x811C9DC5
+    for byte in name.encode("utf-8"):
+        value = ((value ^ byte) * 0x01000193) & 0xFFFFFFFF
+    digits = "0123456789abcdefghijklmnopqrstuvwxyz"
+    out = ""
+    while value:
+        value, rest = divmod(value, 36)
+        out = digits[rest] + out
+    return (out or "0")[:6]
 
 
 def build_bundle(source: Any, name: str = "") -> Tuple[Dict[str, bytes], FormResult]:
@@ -307,9 +346,8 @@ def build_bundle(source: Any, name: str = "") -> Tuple[Dict[str, bytes], FormRes
         FORM_JSON: dump_form(form).encode("utf-8"),
         BUILDER: (_ASSETS / BUILDER).read_bytes(),
         READER: (_ASSETS / READER).read_bytes(),
-        "SKILL.md": _skill_md(form).encode("utf-8"),
-        "AGENTS.md": _agents_md(form).encode("utf-8"),
-        "README.md": _readme(form).encode("utf-8"),
+        **{filename: render(template, bundle_fields(form)).encode("utf-8")
+           for filename, template in TEMPLATES.items()},
         "해부보고서.md": result.report.encode("utf-8"),
         "예시.md": _sample_text(form).encode("utf-8"),
     }

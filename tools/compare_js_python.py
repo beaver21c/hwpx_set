@@ -163,6 +163,77 @@ def capture_with_js(path: Path, kind: str, title: str) -> str:
     return out.stdout
 
 
+def form_with_js(path: Path, name: str) -> dict:
+    script = f"""
+    const m = await import({json.dumps(str(ROOT / 'docs' / 'js' / 'formkit.js'))});
+    const z = await import({json.dumps(str(ROOT / 'docs' / 'js' / 'zip.js'))});
+    const {{ readFile }} = await import('node:fs/promises');
+    const data = await readFile({json.dumps(str(path))});
+    const parts = await z.unzip(
+      data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
+    const dec = new TextDecoder();
+    const text = {{}};
+    for (const [n, b] of parts) {{
+      if (n.startsWith('Contents/') && n.endsWith('.xml')) text[n] = dec.decode(b);
+    }}
+    const r = m.analyzeParts(text, {json.dumps(name)});
+    process.stdout.write(JSON.stringify(r.form));
+    """
+    out = subprocess.run(["node", "--input-type=module", "-e", script],
+                         check=True, capture_output=True, text=True)
+    return json.loads(out.stdout)
+
+
+def same_value(left, right, path: str, diffs: list) -> None:
+    """숫자는 값으로 비교한다(JSON에서 18.0과 18은 같은 값이다)."""
+    if isinstance(left, bool) or isinstance(right, bool):
+        if left != right:
+            diffs.append(f"{path}: {left!r} ≠ {right!r}")
+        return
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        if abs(left - right) > 1e-9:
+            diffs.append(f"{path}: {left} ≠ {right}")
+        return
+    if isinstance(left, dict) and isinstance(right, dict):
+        for key in sorted(set(left) | set(right)):
+            if key not in left or key not in right:
+                diffs.append(f"{path}/{key}: 한쪽에만 있음")
+            else:
+                same_value(left[key], right[key], f"{path}/{key}", diffs)
+        return
+    if isinstance(left, list) and isinstance(right, list):
+        if len(left) != len(right):
+            diffs.append(f"{path}: 길이 {len(left)} ≠ {len(right)}")
+            return
+        for i, (a, b) in enumerate(zip(left, right)):
+            same_value(a, b, f"{path}[{i}]", diffs)
+        return
+    if left != right:
+        diffs.append(f"{path}: {left!r} ≠ {right!r}")
+
+
+def compare_forms(failures: list, tmp_path: Path) -> None:
+    """양식 해부도 두 엔진이 같은 form.json을 내야 한다."""
+    sys.path.insert(0, str(ROOT / "tests"))
+    from formfixtures import auto_bullet_form, plain_form   # noqa: PLC0415
+
+    from hwpx_studio.formkit import analyze                 # noqa: PLC0415
+
+    for label, maker in (("기호가 텍스트에 든 양식", plain_form),
+                         ("한글이 기호를 붙이는 양식", auto_bullet_form)):
+        path = tmp_path / f"form_{len(label)}.hwpx"
+        path.write_bytes(maker())
+        py_form = analyze(str(path), label).form
+        js_form = form_with_js(path, label)
+        diffs: list = []
+        same_value(py_form, js_form, "form", diffs)
+        if diffs:
+            failures.append(f"formkit {label}: 결과 불일치\n    "
+                            + "\n    ".join(diffs[:12]))
+        else:
+            print(f"  ✔ formkit {label}: 레벨 {len(py_form['levels'])}개 일치")
+
+
 def compare_capture(failures: list) -> int:
     """도식 수집도 두 엔진이 같은 블록을 내야 한다."""
     from hwpx_studio.capture import capture as py_capture, spec_to_text
@@ -239,6 +310,7 @@ def main() -> int:
                       f"{sum(len(d) for d in py_designs)}종 일치")
 
         compare_capture(failures)
+        compare_forms(failures, tmp_path)
 
     if failures:
         print("\n브라우저 엔진과 파이썬 엔진의 산출물이 다릅니다:\n")
