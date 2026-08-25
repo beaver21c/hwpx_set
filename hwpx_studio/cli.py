@@ -252,11 +252,12 @@ def run_export_skill(profile_arg: str, out_dir: str, slug: str = "hwpx-report",
 
 
 def run_formkit(source: str, out: Optional[str], name: str,
-                pack: Optional[str], report_only: bool) -> int:
+                pack: Optional[str], report_only: bool,
+                bullets: str = "auto") -> int:
     """양식 hwpx를 해부해 그 양식 전용 꾸러미를 만든다."""
     from .export_form import build_bundle, pack_bundle, write_bundle
 
-    files, result = build_bundle(source, name=name)
+    files, result = build_bundle(source, name=name, bullets=bullets)
     _echo(result.report)
     if report_only:
         return 0
@@ -376,6 +377,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_form.add_argument("--name", default="", help="양식 이름(기본: 파일 이름)")
     p_form.add_argument("--pack", metavar="PATH",
                         help="꾸러미를 .skill 한 파일로 묶어 저장")
+    p_form.add_argument("--bullets", default="auto",
+                        choices=["auto", "hangul", "text"],
+                        help="줄머리 기호를 누가 붙이나 "
+                             "(auto=양식대로, hangul=한글에 맡김, text=도구가 적음)")
     p_form.add_argument("--report-only", action="store_true",
                         help="해부 결과만 보고 만들지 않음")
 
@@ -419,7 +424,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                args.hwpx, args.profile)
         if cmd == "formkit":
             return run_formkit(args.source, args.out, args.name, args.pack,
-                               args.report_only)
+                               args.report_only, args.bullets)
         if cmd == "readback":
             return run_readback(args.source, args.out, args.form, args.report)
         if cmd == "export-skill":

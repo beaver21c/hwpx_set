@@ -47,6 +47,13 @@ HEADING_MARKERS = ["#", "##", "###", "####"]
 #: 기호 근거가 없는 레벨에 임의로 줄 마커. 입력에서 부를 수단일 뿐 찍히지는 않는다.
 FALLBACK_MARKERS = "□○-·※▪◇▶"
 
+#: 줄머리 기호를 **누가** 붙이는가. 양식마다 다르므로 고를 수 있어야 한다.
+#:
+#:   auto   — 양식을 보고 정한다(한글이 붙이면 한글에, 텍스트에 적혀 있으면 도구에)
+#:   hangul — 한글에 맡긴다. 도구는 본문에 기호를 적지 않는다
+#:   text   — 도구가 본문 텍스트에 적어 넣는다
+BULLET_SOURCES = ("auto", "hangul", "text")
+
 #: 1행이면서 셀이 이 수 이하인 표는 데이터 표가 아니라 제목 상자로 본다
 LAYOUT_TABLE_MAX_CELLS = 3
 
@@ -72,6 +79,7 @@ class LevelGuess:
     prefix: Optional[str] = None           # 본문 텍스트에 직접 적힌 번호 유형
     symbol_in_text: Optional[str] = None   # 본문 텍스트에 직접 적힌 기호
     invented: bool = False                 # 근거 없이 도구가 정해 준 마커인가
+    write_override: Optional[bool] = None  # 기호를 누가 붙이는지 사람이 고른 값
     heading_level: Optional[int] = None
     size_pt: float = 12.0
     left_pt: float = 0.0
@@ -82,10 +90,13 @@ class LevelGuess:
     def write_marker(self) -> bool:
         """마커 기호를 본문 텍스트에 적어 넣어야 하는가.
 
-        양식이 원래 기호를 텍스트에 적어 두었을 때만 그렇다. 한글이 자동으로 붙이는
-        양식(`auto_bullet`)에 또 적으면 이중이 되고, 애초에 기호가 없던 레벨에
-        적으면 없던 기호가 생긴다.
+        고른 값(`write_override`)이 있으면 그것을 따른다. 없으면 양식을 보고 정한다 —
+        양식이 원래 기호를 텍스트에 적어 두었을 때만 도구가 적는다. 한글이 자동으로
+        붙이는 양식에 또 적으면 이중이 되고, 애초에 기호가 없던 레벨에 적으면 없던
+        기호가 생긴다.
         """
+        if self.write_override is not None:
+            return self.write_override
         return self.symbol_in_text is not None
 
     @property
@@ -515,8 +526,43 @@ def _pick(styles: Dict[int, Dict[str, Any]], *names: str) -> Optional[int]:
     return None
 
 
-def analyze(source: Any, name: str = "") -> FormResult:
-    """양식 hwpx를 읽어 `form.json`에 담을 dict와 근거 보고서를 만든다."""
+def apply_bullet_source(levels: Sequence[LevelGuess], source: str,
+                        notes: List[str]) -> None:
+    """줄머리 기호를 누가 붙일지 정한다.
+
+    고른 값이 양식과 어긋나면 **말한다.** 조용히 넘기면 기호가 두 번 찍히거나
+    아예 사라진 문서가 나온다.
+    """
+    if source not in BULLET_SOURCES:
+        raise ValueError(f"글머리표 담당은 {'·'.join(BULLET_SOURCES)} 중 하나여야 한다: "
+                         f"{source!r}")
+    if source == "auto":
+        return
+
+    for level in levels:
+        if level.marker in HEADING_MARKERS or not level.marker:
+            continue                                    # 제목·마커 없는 레벨은 그대로
+        if source == "hangul":
+            level.write_override = False
+            if not level.auto_bullet:
+                notes.append(
+                    f"'{level.name}' 레벨을 한글에 맡겼지만 이 양식에는 자동 글머리표가 "
+                    f"걸려 있지 않다 → `{level.marker}` 기호가 아무 데서도 찍히지 않는다. "
+                    "한글에서 이 스타일에 글머리표를 걸거나 '도구가 붙임'으로 바꿀 것")
+        else:                                           # text
+            level.write_override = True
+            if level.auto_bullet:
+                notes.append(
+                    f"'{level.name}' 레벨은 한글이 `{level.auto_bullet}`를 자동으로 붙이는데 "
+                    "도구까지 적도록 골랐다 → 기호가 두 번 찍힌다. "
+                    "한글에서 이 스타일의 글머리표를 끄거나 '한글에 맡김'으로 바꿀 것")
+
+
+def analyze(source: Any, name: str = "", bullets: str = "auto") -> FormResult:
+    """양식 hwpx를 읽어 `form.json`에 담을 dict와 근거 보고서를 만든다.
+
+    `bullets`로 줄머리 기호를 누가 붙일지 고른다(`auto`·`hangul`·`text`).
+    """
     parts = _read_parts(source)
     if HEADER_PATH not in parts:
         raise ValueError("hwpx 안에 Contents/header.xml이 없다 — 한글 문서가 맞는지 확인할 것")
@@ -540,15 +586,16 @@ def analyze(source: Any, name: str = "") -> FormResult:
     char_props = _char_props(head)
     faces = _font_faces(head)
     headings = _headings(head)
-    bullets = _bullet_chars(head)
+    bullet_chars = _bullet_chars(head)
     numberings = _numbering_formats(head)
 
     records = _paragraph_records(section_xml)
     levels = _guess_levels(records, styles, para_props, char_props,
-                           headings, bullets, numberings, notes)
+                           headings, bullet_chars, numberings, notes)
 
     if not levels:
         notes.append("본문 문단을 하나도 찾지 못했다 → 내용이 든 양식 파일인지 확인할 것")
+    apply_bullet_source(levels, bullets, notes)
 
     body_styles = [g.style for g in levels]
     cut = preamble_cut(section_xml, body_styles)
@@ -568,6 +615,7 @@ def analyze(source: Any, name: str = "") -> FormResult:
         "schema": SCHEMA_ID,
         "name": name or _default_name(source),
         "template": "template.hwpx",
+        "bullet_source": bullets,
         "section": section_names[0],
         "header": HEADER_PATH,
         "preamble_bytes": cut,

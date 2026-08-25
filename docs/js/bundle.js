@@ -117,11 +117,14 @@ export function render(template, fields) {
 
 /**
  * 양식 hwpx 바이트 → 꾸러미.
+ * @param {ArrayBuffer} buffer 양식 hwpx
+ * @param {string} name 양식 이름
+ * @param {string} bullets 줄머리 기호 담당 — 'auto' | 'hangul' | 'text'
  * @returns {{files: Map<string, Uint8Array>, form: object, report: string}}
  */
-export async function buildBundle(buffer, name) {
+export async function buildBundle(buffer, name, bullets = 'auto') {
   const parts = await readContents(buffer);
-  const { form, report } = analyzeParts(parts, name);
+  const { form, report } = analyzeParts(parts, name, bullets);
   const fields = bundleFields(form);
 
   const files = new Map();

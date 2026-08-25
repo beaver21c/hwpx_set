@@ -349,14 +349,19 @@ async function runFormkit() {
   say('해부하는 중…');
   try {
     const name = ($('form-name').value || '').trim() || stripExtension(picked.name);
-    const { files, form, report } = await buildBundle(picked.buffer, name);
+    const bullets = $('form-bullets').value;
+    const { files, form, report } = await buildBundle(picked.buffer, name, bullets);
     bundleState = { files, form };
     $('form-report').innerHTML = renderMarkdown(report);
     $('form-result').hidden = false;
     const invented = (form.levels || []).filter((lv) => lv.marker_invented).length;
+    const clash = (form.notes || []).filter(
+      (note) => note.includes('두 번 찍힌다') || note.includes('찍히지 않는다')).length;
     say(`레벨 ${form.levels.length}개를 찾았습니다`
       + (invented ? ` (그 가운데 ${invented}개는 마커를 임의로 정했습니다)` : '')
-      + `. 꾸러미 ${files.size}개 파일 준비됨.`, 'ok');
+      + `. 꾸러미 ${files.size}개 파일 준비됨.`
+      + (clash ? ` ⚠ 글머리 기호 선택이 양식과 어긋나는 레벨 ${clash}개 — 아래를 볼 것.` : ''),
+    clash ? 'bad' : 'ok');
   } catch (error) {
     console.error(error);
     bundleState = null;
@@ -477,6 +482,9 @@ function init() {
   });
   $('check').addEventListener('click', runCheck);
   $('form-run').addEventListener('click', runFormkit);
+  $('form-bullets').addEventListener('change', () => {
+    if ($('form-file').files.length) runFormkit();      // 고르면 곧바로 다시 해부한다
+  });
   $('form-download').addEventListener('click', () => downloadBundle('zip'));
   $('form-download-skill').addEventListener('click', () => downloadBundle('skill'));
   $('convert-run').addEventListener('click', runConvert);

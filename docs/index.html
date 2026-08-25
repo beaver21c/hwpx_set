@@ -60,7 +60,19 @@
         <label>양식 이름
           <input id="form-name" type="text" placeholder="예: 정책보고서틀" spellcheck="false">
         </label>
+        <label>줄머리 기호(□ ○ -)를 누가 붙이나
+          <select id="form-bullets">
+            <option value="auto">양식을 보고 정하기 (권장)</option>
+            <option value="hangul">한글에 맡기기 — 양식이 자동으로 붙임</option>
+            <option value="text">도구가 본문에 적어 넣기</option>
+          </select>
+        </label>
       </div>
+      <p class="hint">한글은 문단 스타일에 <strong>자동 글머리표</strong>를 걸어 둘 수 있습니다.
+        그런 양식이면 본문에 기호를 또 적으면 안 되고(두 번 찍힙니다), 그렇지 않은 양식이면
+        도구가 적어야 합니다. 기본값은 양식을 해부해 자동으로 가르고,
+        <strong>다르게 잡혔으면 여기서 고르면</strong> 됩니다.
+        고른 값이 양식과 어긋나면 해부 결과에 그 사실이 적힙니다.</p>
       <div class="actions">
         <button type="button" id="form-run" class="primary">해부해서 꾸러미 만들기</button>
       </div>

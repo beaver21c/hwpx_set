@@ -22,6 +22,15 @@
     python build_form.py 원고.md --check-only     # 입력 검사만
     python build_form.py --markers                # 이 양식의 마커 목록 보기
 
+줄머리 기호를 **누가** 붙일지 고를 수 있다. 양식마다 다르기 때문이다.
+
+    --bullets auto      양식을 해부해 정해 둔 대로(기본값)
+    --bullets hangul    한글에 맡긴다. 본문에 기호를 적지 않는다
+    --bullets text      도구가 본문 텍스트에 적어 넣는다
+
+고른 값이 양식과 어긋나면 — 한글이 붙이는데 도구까지 적거나, 한글에 맡겼는데
+양식에 글머리표가 없거나 — 1층 검사가 알려 준다.
+
 `form.json`·`template.hwpx`는 이 스크립트와 같은 폴더에 있으면 저절로 찾는다.
 
 ## 입력 문법
@@ -107,6 +116,36 @@ class Form:
     def refs(self, block: str) -> Tuple[int, int, int]:
         node = self.data.get(block) or {}
         return int(node.get("style", 0)), int(node.get("para", 0)), int(node.get("char", 0))
+
+    def apply_bullet_source(self, source: str) -> List[str]:
+        """줄머리 기호를 누가 붙일지 이 자리에서 바꾼다(form.json은 그대로 둔다).
+
+        `auto`는 양식을 해부해 정해 둔 값을 그대로 쓴다. `hangul`은 한글에 맡기고,
+        `text`는 도구가 본문에 적는다. 고른 값이 양식과 어긋나면 말한다.
+        """
+        if source not in ("auto", "hangul", "text"):
+            raise SystemExit(f"[중단] --bullets는 auto·hangul·text 중 하나여야 한다: {source}")
+        warnings: List[str] = []
+        if source == "auto":
+            return warnings
+        for level in self.levels:
+            marker = level.get("marker") or ""
+            if not marker or marker.startswith("#"):
+                continue
+            if source == "hangul":
+                level["write_marker"] = False
+                if not level.get("auto_bullet"):
+                    warnings.append(
+                        f"'{level.get('name', '')}' 레벨을 한글에 맡겼지만 이 양식에는 "
+                        f"자동 글머리표가 없다 → '{marker}' 기호가 아무 데서도 찍히지 않는다")
+            else:
+                level["write_marker"] = True
+                if level.get("auto_bullet"):
+                    warnings.append(
+                        f"'{level.get('name', '')}' 레벨은 한글이 "
+                        f"'{level['auto_bullet']}'를 자동으로 붙이는데 도구까지 적도록 "
+                        "골랐다 → 기호가 두 번 찍힌다")
+        return warnings
 
     def marker_table(self) -> str:
         rows = ["| 마커 | 레벨 | 스타일 | 기호·번호 |", "|---|---|---|---|"]
@@ -650,7 +689,8 @@ def check_double_bullets(section_xml: str, form: Form) -> List[str]:
         text = "".join(re.findall(r"<hp:t>([^<]*)</hp:t>", body)).lstrip()
         if text[:1] in "□○-·･•▪◦∙※":
             errs.append(f"[이중 기호] 한글이 '{auto[para_id]}'를 붙이는 문단인데 "
-                        f"텍스트도 기호로 시작한다: {text[:24]!r}")
+                        f"텍스트도 기호로 시작한다: {text[:24]!r} "
+                        "→ 본문에서 기호를 빼거나 --bullets hangul 로 만들 것")
     return errs
 
 
@@ -681,9 +721,10 @@ def check_output(path: Path) -> List[str]:
 # 조립
 # ---------------------------------------------------------------------------
 def build(form: Form, template: Path, source: Path, out: Path,
-          check_only: bool, strict: bool) -> int:
+          check_only: bool, strict: bool, bullets: str = "auto") -> int:
+    chosen = form.apply_bullet_source(bullets)
     parsed = parse_input(source.read_text(encoding="utf-8"), form)
-    issues = lint(parsed, form)
+    issues = lint(parsed, form) + chosen
 
     print("── 1층 입력 검사 " + "─" * 30)
     for issue in issues:
@@ -756,10 +797,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--check-only", action="store_true", help="입력 검사만")
     ap.add_argument("--strict", action="store_true", help="경고가 하나라도 있으면 만들지 않음")
     ap.add_argument("--markers", action="store_true", help="이 양식의 마커 목록")
+    ap.add_argument("--bullets", default="auto", choices=["auto", "hangul", "text"],
+                    help="줄머리 기호를 누가 붙이나 "
+                         "(auto=양식대로, hangul=한글에 맡김, text=도구가 적음)")
     args = ap.parse_args(argv)
 
     form = load_form(args.form)
     if args.markers:
+        for warning in form.apply_bullet_source(args.bullets):
+            print("  [경고]", warning)
         print(f"# {form.name} 마커\n")
         print(form.marker_table())
         return 0
@@ -771,7 +817,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         raise SystemExit(f"[중단] 양식 원본이 없다: {template}")
     if not args.input.exists():
         raise SystemExit(f"[중단] 입력 파일이 없다: {args.input}")
-    return build(form, template, args.input, args.output, args.check_only, args.strict)
+    return build(form, template, args.input, args.output, args.check_only,
+                 args.strict, args.bullets)
 
 
 if __name__ == "__main__":

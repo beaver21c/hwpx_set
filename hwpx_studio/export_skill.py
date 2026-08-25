@@ -284,6 +284,9 @@ def main() -> int:
     ap.add_argument("-o", "--out", help="꾸러미를 풀어 놓을 폴더")
     ap.add_argument("--name", default="", help="양식 이름(기본: 파일 이름)")
     ap.add_argument("--pack", help="꾸러미를 .skill 한 파일로 묶어 저장")
+    ap.add_argument("--bullets", default="auto",
+                    choices=["auto", "hangul", "text"],
+                    help="줄머리 기호를 누가 붙이나")
     ap.add_argument("--report-only", action="store_true")
     args = ap.parse_args()
 
@@ -293,7 +296,7 @@ def main() -> int:
         print("hwpx-studio가 필요합니다: pip install hwpx-studio", file=sys.stderr)
         return 2
     return run_formkit(args.source, args.out, args.name, args.pack,
-                       args.report_only)
+                       args.report_only, args.bullets)
 
 
 if __name__ == "__main__":

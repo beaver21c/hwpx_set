@@ -109,6 +109,20 @@ python build_form.py 원고.md --check-only    # 입력 검사만
 python build_form.py --markers               # 마커 목록
 ```
 
+### 줄머리 기호를 누가 붙이나
+
+한글은 문단 스타일에 **자동 글머리표**를 걸어 둘 수 있다. 그런 양식이면 본문에
+기호를 또 적으면 두 번 찍히고, 그렇지 않은 양식이면 도구가 적어야 한다.
+해부할 때 양식을 보고 갈라 두었지만, 다르게 잡혔으면 만들 때 바꿀 수 있다.
+
+```bash
+python build_form.py 원고.md -o 결과.hwpx --bullets hangul   # 한글에 맡김
+python build_form.py 원고.md -o 결과.hwpx --bullets text     # 도구가 적음
+```
+
+고른 값이 양식과 어긋나면 검사가 알려 준다. 레벨마다 따로 정하려면 `form.json`의
+`levels[].write_marker`를 고친다(`--bullets auto`가 그 값을 그대로 쓴다).
+
 ### 이미 있는 한글 파일을 이 양식으로 바꾸기
 
 서식이 안 갖춰진 `.hwpx`가 있으면 먼저 마커 텍스트로 되돌린 뒤 다시 만든다.
@@ -194,6 +208,10 @@ python read_hwpx.py 받은문서.hwpx -o 원고.md --report 추정근거.md
 **기호를 두 번 쓰지 않는다.** 위 표에서 '한글이 자동으로'라고 적힌 레벨은 마커만
 쓰고 본문에 기호를 또 적으면 안 된다. 이중으로 찍힌다.
 
+표의 담당이 실제 양식과 다르면 `--bullets hangul`(한글에 맡김) 또는
+`--bullets text`(도구가 적음)로 바꾼다. 레벨마다 따로 정하려면 `form.json`의
+`levels[].write_marker`를 고친다.
+
 ## 공통 문법
 
 ```
@@ -254,6 +272,7 @@ python build_form.py 원고.md -o 결과.hwpx
 {{markers}}
 
 '한글이 자동으로'라고 적힌 레벨은 마커만 쓴다. 본문에 기호를 또 적으면 이중이 된다.
+표의 담당이 실제 양식과 다르면 `--bullets hangul` 또는 `--bullets text`로 바꾼다.
 
 ## 공통 문법
 
@@ -337,11 +356,15 @@ def _tag(name: str) -> str:
     return (out or "0")[:6]
 
 
-def build_bundle(source: Any, name: str = "") -> Tuple[Dict[str, bytes], FormResult]:
-    """양식 hwpx → {파일 이름: 내용} 꾸러미."""
+def build_bundle(source: Any, name: str = "",
+                 bullets: str = "auto") -> Tuple[Dict[str, bytes], FormResult]:
+    """양식 hwpx → {파일 이름: 내용} 꾸러미.
+
+    `bullets`로 줄머리 기호를 누가 붙일지 고른다(`auto`·`hangul`·`text`).
+    """
     template_bytes = _read_bytes(source)
     result = analyze(template_bytes if isinstance(source, (bytes, bytearray)) else source,
-                     name=name)
+                     name=name, bullets=bullets)
     form = result.form
     files: Dict[str, bytes] = {
         TEMPLATE: template_bytes,

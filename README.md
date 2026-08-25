@@ -34,6 +34,11 @@ python build_form.py 원고.md -o 결과.hwpx
 python read_hwpx.py 받은문서.hwpx -o 원고.md --report 추정근거.md
 ```
 
+줄머리 기호(□ ○ -)를 **한글이 붙이는지 도구가 적는지**는 양식마다 다르다.
+해부할 때 갈라 두지만 다르게 잡혔으면 고르면 된다 —
+`--bullets hangul`(한글에 맡김) / `--bullets text`(도구가 적음).
+어긋나면 "두 번 찍힌다" 또는 "찍히지 않는다"로 알려 준다.
+
 자세한 건 `docs/form-guide.md`.
 
 ```

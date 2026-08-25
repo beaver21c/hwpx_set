@@ -268,3 +268,78 @@ def test_extract_points_at_formkit_when_the_form_uses_auto_bullets():
     warned = extract_profile(auto_bullet_form()).notes
     assert any("formkit" in note for note in warned)
     assert not any("formkit" in note for note in extract_profile(plain_form()).notes)
+
+
+# ──────────────────────────────────────────────────────────────
+# 줄머리 기호를 누가 붙이나 — 고를 수 있어야 한다
+# ──────────────────────────────────────────────────────────────
+def test_bullet_source_can_be_chosen_against_the_evidence():
+    """해부가 정한 값을 사람이 뒤집을 수 있다."""
+    auto = formkit.analyze(auto_bullet_form(), "자동", bullets="auto")
+    box = next(lv for lv in auto.form["levels"] if lv["name"] == "네모")
+    assert box["write_marker"] is False
+
+    forced = formkit.analyze(auto_bullet_form(), "자동", bullets="text")
+    box = next(lv for lv in forced.form["levels"] if lv["name"] == "네모")
+    assert box["write_marker"] is True
+    assert forced.form["bullet_source"] == "text"
+
+
+def test_choosing_text_on_an_auto_bullet_form_says_it_will_double():
+    result = formkit.analyze(auto_bullet_form(), "자동", bullets="text")
+    assert any("두 번 찍힌다" in note for note in result.form["notes"])
+
+
+def test_choosing_hangul_on_a_form_without_bullets_says_it_will_vanish():
+    result = formkit.analyze(plain_form(), "평범", bullets="hangul")
+    assert any("찍히지 않는다" in note for note in result.form["notes"])
+    box = next(lv for lv in result.form["levels"] if lv["name"] == "네모")
+    assert box["write_marker"] is False
+
+
+def test_heading_levels_are_untouched_by_the_choice():
+    """제목은 번호매기기가 따로 있다. 글머리표 선택이 건드리면 안 된다."""
+    for mode in ("auto", "hangul", "text"):
+        result = formkit.analyze(auto_bullet_form(), "자동", bullets=mode)
+        top = next(lv for lv in result.form["levels"] if lv["name"] == "로마자")
+        assert top["write_marker"] is False, mode
+        assert top["numbering"] is None, mode
+
+
+def test_unknown_bullet_source_is_refused():
+    with pytest.raises(ValueError) as err:
+        formkit.analyze(plain_form(), "평범", bullets="아무거나")
+    assert "auto" in str(err.value)
+
+
+def test_builder_can_change_the_choice_at_build_time(tmp_path):
+    """꾸러미를 다시 만들지 않고 --bullets로 바꿀 수 있다."""
+    bundle = _bundle(tmp_path, auto_bullet_form(), "자동")
+    (bundle / "원고.md").write_text("□ 기호 없이 쓴 줄\n", encoding="utf-8")
+
+    done = _run(bundle, "원고.md", "-o", "맡김.hwpx")
+    assert done.returncode == 0, done.stdout
+    with zipfile.ZipFile(bundle / "맡김.hwpx") as z:
+        texts = re.findall(r"<hp:t>([^<]*)</hp:t>",
+                           z.read("Contents/section0.xml").decode("utf-8"))
+    assert "기호 없이 쓴 줄" in texts, "한글에 맡기면 기호를 적지 않는다"
+
+    forced = _run(bundle, "원고.md", "-o", "도구가.hwpx", "--bullets", "text")
+    assert forced.returncode == 2, forced.stdout
+    assert "두 번 찍힌다" in forced.stdout
+    assert "이중 기호" in forced.stdout
+    assert not (bundle / "도구가.hwpx").exists(), "기호가 겹치는 문서를 남기지 않는다"
+
+
+def test_builder_warns_when_the_symbol_would_vanish(tmp_path):
+    bundle = _bundle(tmp_path, plain_form(), "평범")
+    (bundle / "원고.md").write_text("□ 내용\n", encoding="utf-8")
+    done = _run(bundle, "원고.md", "--check-only", "--bullets", "hangul")
+    assert "찍히지 않는다" in done.stdout
+
+
+def test_marker_table_reflects_the_choice(tmp_path):
+    bundle = _bundle(tmp_path, plain_form(), "평범")
+    listed = _run(bundle, "--markers", "--bullets", "hangul")
+    assert listed.returncode == 0
+    assert "찍히지 않는다" in listed.stdout

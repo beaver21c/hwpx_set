@@ -163,7 +163,7 @@ def capture_with_js(path: Path, kind: str, title: str) -> str:
     return out.stdout
 
 
-def form_with_js(path: Path, name: str) -> dict:
+def form_with_js(path: Path, name: str, bullets: str = "auto") -> dict:
     script = f"""
     const m = await import({json.dumps(str(ROOT / 'docs' / 'js' / 'formkit.js'))});
     const z = await import({json.dumps(str(ROOT / 'docs' / 'js' / 'zip.js'))});
@@ -176,7 +176,7 @@ def form_with_js(path: Path, name: str) -> dict:
     for (const [n, b] of parts) {{
       if (n.startsWith('Contents/') && n.endsWith('.xml')) text[n] = dec.decode(b);
     }}
-    const r = m.analyzeParts(text, {json.dumps(name)});
+    const r = m.analyzeParts(text, {json.dumps(name)}, {json.dumps(bullets)});
     process.stdout.write(JSON.stringify(r.form));
     """
     out = subprocess.run(["node", "--input-type=module", "-e", script],
@@ -223,15 +223,18 @@ def compare_forms(failures: list, tmp_path: Path) -> None:
                          ("한글이 기호를 붙이는 양식", auto_bullet_form)):
         path = tmp_path / f"form_{len(label)}.hwpx"
         path.write_bytes(maker())
-        py_form = analyze(str(path), label).form
-        js_form = form_with_js(path, label)
-        diffs: list = []
-        same_value(py_form, js_form, "form", diffs)
-        if diffs:
-            failures.append(f"formkit {label}: 결과 불일치\n    "
-                            + "\n    ".join(diffs[:12]))
-        else:
-            print(f"  ✔ formkit {label}: 레벨 {len(py_form['levels'])}개 일치")
+        # 글머리표 담당을 고르는 세 갈래 모두에서 같아야 한다
+        for bullets in ("auto", "hangul", "text"):
+            py_form = analyze(str(path), label, bullets=bullets).form
+            js_form = form_with_js(path, label, bullets)
+            diffs: list = []
+            same_value(py_form, js_form, "form", diffs)
+            if diffs:
+                failures.append(f"formkit {label} (--bullets {bullets}): 결과 불일치\n    "
+                                + "\n    ".join(diffs[:12]))
+            else:
+                print(f"  ✔ formkit {label} · 기호 {bullets}: "
+                      f"레벨 {len(py_form['levels'])}개 일치")
 
 
 def readback_with_js(path: Path, form_path: Path) -> str:

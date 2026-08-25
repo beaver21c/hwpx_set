@@ -16,6 +16,14 @@ export const BULLET_MARKERS = '□○-·･•▪◦∙※◇◆▶';
 export const HEADING_MARKERS = ['#', '##', '###', '####'];
 export const FALLBACK_MARKERS = '□○-·※▪◇▶';
 
+/**
+ * 줄머리 기호를 **누가** 붙이는가. 양식마다 다르므로 고를 수 있어야 한다.
+ *   auto   — 양식을 보고 정한다
+ *   hangul — 한글에 맡긴다. 도구는 본문에 기호를 적지 않는다
+ *   text   — 도구가 본문 텍스트에 적어 넣는다
+ */
+export const BULLET_SOURCES = ['auto', 'hangul', 'text'];
+
 const LAYOUT_TABLE_MAX_CELLS = 3;
 const SKIP_SUBTREES = new Set(['footNote', 'endNote', 'caption', 'header', 'footer']);
 
@@ -518,8 +526,36 @@ function assignMarkers(guesses, notes) {
   });
 }
 
+/** 고른 값이 양식과 어긋나면 말한다. 조용히 넘기면 기호가 겹치거나 사라진다. */
+export function applyBulletSource(levels, source, notes) {
+  if (!BULLET_SOURCES.includes(source)) {
+    throw new Error(`글머리표 담당은 ${BULLET_SOURCES.join('·')} 중 하나여야 한다: ${source}`);
+  }
+  if (source === 'auto') return;
+  for (const level of levels) {
+    if (!level.marker || HEADING_MARKERS.includes(level.marker)) continue;
+    if (source === 'hangul') {
+      level.write_override = false;
+      if (!level.auto_bullet) {
+        notes.push(`'${level.name}' 레벨을 한글에 맡겼지만 이 양식에는 자동 글머리표가 `
+          + `걸려 있지 않다 → \`${level.marker}\` 기호가 아무 데서도 찍히지 않는다. `
+          + "한글에서 이 스타일에 글머리표를 걸거나 '도구가 붙임'으로 바꿀 것");
+      }
+    } else {
+      level.write_override = true;
+      if (level.auto_bullet) {
+        notes.push(`'${level.name}' 레벨은 한글이 \`${level.auto_bullet}\`를 자동으로 `
+          + '붙이는데 도구까지 적도록 골랐다 → 기호가 두 번 찍힌다. '
+          + "한글에서 이 스타일의 글머리표를 끄거나 '한글에 맡김'으로 바꿀 것");
+      }
+    }
+  }
+}
+
 function levelDict(g) {
-  const writeMarker = g.symbol_in_text !== null && g.symbol_in_text !== undefined;
+  const writeMarker = g.write_override === undefined
+    ? (g.symbol_in_text !== null && g.symbol_in_text !== undefined)
+    : g.write_override;
   const numbering = g.auto_number ? null
     : ((g.prefix || '').startsWith('AUTO_') ? g.prefix : null);
   return {
@@ -554,7 +590,7 @@ function pickStyleByName(styleMap, names) {
  * @param {Object} parts Contents/*.xml 내용
  * @param {string} name 양식 이름
  */
-export function analyzeParts(parts, name = '양식') {
+export function analyzeParts(parts, name = '양식', bullets = 'auto') {
   if (!parts[HEADER_PATH]) {
     throw new Error('hwpx 안에 Contents/header.xml이 없다 — 한글 문서가 맞는지 확인할 것');
   }
@@ -577,6 +613,7 @@ export function analyzeParts(parts, name = '양식') {
   if (!guesses.length) {
     notes.push('본문 문단을 하나도 찾지 못했다 → 내용이 든 양식 파일인지 확인할 것');
   }
+  applyBulletSource(guesses, bullets, notes);
 
   const cut = preambleCut(section, guesses.map((g) => g.style));
   const table = tableSkeleton(section, notes);
@@ -596,6 +633,7 @@ export function analyzeParts(parts, name = '양식') {
     schema: SCHEMA_ID,
     name: name || '양식',
     template: 'template.hwpx',
+    bullet_source: bullets,
     section: sectionNames[0],
     header: HEADER_PATH,
     preamble_bytes: cut,
@@ -628,7 +666,7 @@ export function renderFormReport(form, levels) {
     if (g.auto_bullet) who = `한글이 자동으로 \`${g.auto_bullet}\``;
     else if (g.auto_number) who = `한글이 자동으로 번호(\`${g.auto_number}\`)`;
     else if (numbering) who = `도구가 번호(${numbering})`;
-    else if (g.symbol_in_text) who = `도구가 \`${g.marker}\``;
+    else if (levelDict(g).write_marker) who = `도구가 \`${g.marker}\``;
     else who = '없음';
     const first = g.samples.length ? g.samples[0] : '';
     const sample = first.length > 24 ? `${first.slice(0, 24)}…` : first;

@@ -397,3 +397,24 @@ def test_every_lane_opens(browser, server):
         go(page, lane)
         assert page.locator(f'[data-panel="{lane}"]').is_visible()
     assert problems == []
+
+
+def test_bullet_source_can_be_chosen_in_the_page(browser, server, tmp_path):
+    """글머리표를 누가 붙일지 고르면 곧바로 다시 해부하고, 어긋나면 말한다."""
+    page, problems = open_page(browser, server, "form")
+    page.set_input_files("#form-file", str(_fixture_form(tmp_path)))
+    page.fill("#form-name", "고르기")
+    page.click("#form-run")
+    page.wait_for_selector("#form-result", state="visible")
+    assert "한글이 자동으로" in page.inner_text("#form-report")
+
+    page.select_option("#form-bullets", "text")
+    page.wait_for_timeout(600)
+    report = page.inner_text("#form-report")
+    assert "두 번 찍힌다" in report, report[:300]
+    assert "어긋나는" in page.inner_text("#form-status")
+
+    page.select_option("#form-bullets", "auto")
+    page.wait_for_timeout(600)
+    assert "두 번 찍힌다" not in page.inner_text("#form-report")
+    assert problems == []
