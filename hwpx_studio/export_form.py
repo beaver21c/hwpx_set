@@ -23,7 +23,7 @@ import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from .formkit import FormResult, analyze, dump_form
+from .formkit import FormResult, analyze, dump_form, pt
 
 _ASSETS = Path(__file__).resolve().parent / "assets"
 
@@ -47,8 +47,10 @@ def _marker_rows(form: Dict[str, Any]) -> str:
             who = f"도구가 `{lv['marker']}`를 붙임"
         else:
             who = "없음"
+        size = lv.get("size_pt")
         rows.append(f"| `{lv.get('marker') or '(마커 없음)'}` | "
-                    f"{lv.get('name', '')} {lv.get('size_pt', '')}pt | {who} |")
+                    f"{lv.get('name', '')} {pt(size) if size is not None else ''}pt | "
+                    f"{who} |")
     return "\n".join(rows)
 
 

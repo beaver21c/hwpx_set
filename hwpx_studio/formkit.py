@@ -605,6 +605,11 @@ def _default_name(source: Any) -> str:
     return "양식"
 
 
+def pt(value: float) -> str:
+    """11.0 대신 11로 적는다. 브라우저 쪽 표기와 같아야 한다."""
+    return f"{float(value):g}"
+
+
 def render_report(form: Dict[str, Any], levels: Sequence[LevelGuess]) -> str:
     """무엇을 왜 그렇게 보았는지. 사람이 확인하라고 남긴다."""
     out = [f"# 양식 해부 결과 — {form['name']}", "",
@@ -627,7 +632,7 @@ def render_report(form: Dict[str, Any], levels: Sequence[LevelGuess]) -> str:
         sample = (g.samples[0][:24] + "…") if g.samples and len(g.samples[0]) > 24 else (
             g.samples[0] if g.samples else "")
         out.append(f"| `{g.marker or '(없음)'}` | {g.key} | {g.name}({g.style}) | "
-                   f"{g.size_pt}pt | {g.left_pt}pt | {who} | {g.count} | {sample} |")
+                   f"{pt(g.size_pt)}pt | {pt(g.left_pt)}pt | {who} | {g.count} | {sample} |")
 
     table = form["table"]
     out += ["", "## 표 골격", "",

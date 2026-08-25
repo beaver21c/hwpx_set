@@ -309,6 +309,11 @@ def _blank(lines: List[str], prev_kind: str) -> None:
         lines.append("")
 
 
+def pt(value: float) -> str:
+    """11.0 대신 11로 적는다. 브라우저 쪽 표기와 같아야 한다."""
+    return f"{float(value):g}"
+
+
 def render_report(blocks: Sequence[Block], markers: Sequence[str],
                   notes: Sequence[str]) -> str:
     depths = sorted({b.depth for b in blocks if b.kind == "para"})
@@ -319,7 +324,7 @@ def render_report(blocks: Sequence[Block], markers: Sequence[str],
         members = [b for b in blocks if b.kind == "para" and b.depth == depth]
         why = (f"번호 {members[0].number}" if members[0].number
                else f"기호 `{members[0].symbol}`" if members[0].symbol
-               else f"글자 {members[0].size_pt}pt")
+               else f"글자 {pt(members[0].size_pt)}pt")
         marker = markers[min(i, len(markers) - 1)] if markers else "(없음)"
         out.append(f"| {i + 1}단계 | {why} | {len(members)} | `{marker}` |")
 

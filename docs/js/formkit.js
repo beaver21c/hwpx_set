@@ -42,9 +42,11 @@ const PT = 100;   // 1pt = 100 HWPUNIT
 const TAG_RE = /<(\/?)([\w:]+)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
 
 function* scan(xml) {
-  TAG_RE.lastIndex = 0;
+  // 정규식을 호출마다 새로 만든다. 하나를 나눠 쓰면 중첩 호출에서 lastIndex가
+  // 초기화되어 바깥 반복이 처음으로 되돌아간다(무한 반복).
+  const re = new RegExp(TAG_RE.source, 'g');
   let m;
-  while ((m = TAG_RE.exec(xml)) !== null) {
+  while ((m = re.exec(xml)) !== null) {
     yield {
       close: m[1] === '/',
       name: m[2].includes(':') ? m[2].split(':')[1] : m[2],

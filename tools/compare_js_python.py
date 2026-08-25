@@ -234,6 +234,62 @@ def compare_forms(failures: list, tmp_path: Path) -> None:
             print(f"  ✔ formkit {label}: 레벨 {len(py_form['levels'])}개 일치")
 
 
+def readback_with_js(path: Path, form_path: Path) -> str:
+    script = f"""
+    const m = await import({json.dumps(str(ROOT / 'docs' / 'js' / 'readback.js'))});
+    const {{ readFile }} = await import('node:fs/promises');
+    const data = await readFile({json.dumps(str(path))});
+    const form = JSON.parse(await readFile({json.dumps(str(form_path))}, 'utf8'));
+    const r = await m.readBack(
+      data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength), form);
+    process.stdout.write(r.text + "\\n---\\n" + r.report);
+    """
+    out = subprocess.run(["node", "--input-type=module", "-e", script],
+                         check=True, capture_output=True, text=True)
+    return out.stdout
+
+
+def compare_readback(failures: list, tmp_path: Path) -> None:
+    """되돌리기도 두 엔진이 같은 마커 텍스트를 내야 한다."""
+    import importlib.util                                    # noqa: PLC0415
+
+    sys.path.insert(0, str(ROOT / "tests"))
+    from formfixtures import plain_form                      # noqa: PLC0415
+
+    from hwpx_studio.export_form import build_bundle         # noqa: PLC0415
+
+    asset = ROOT / "hwpx_studio" / "assets" / "read_hwpx.py"
+    spec = importlib.util.spec_from_file_location("_read_hwpx_parity", asset)
+    reader = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = reader
+    spec.loader.exec_module(reader)
+
+    files, result = build_bundle(plain_form(), name="대조양식")
+    form_path = tmp_path / "form.json"
+    form_path.write_bytes(files["form.json"])
+
+    for rel in ("tests/fixtures/footnote.md", "examples/input_outline.md"):
+        profile_path = ROOT / "hwpx_studio" / "profiles" / "policy-default.json"
+        profile = load_profile(str(profile_path))
+        parsed = parse_file(str(ROOT / rel), profile)
+        source = tmp_path / f"read_{Path(rel).stem}.hwpx"
+        build_document(profile, parsed.items, str(source))
+
+        blocks = reader.read_blocks(source)
+        notes = reader.classify(blocks)
+        markers, _name = reader.load_markers(form_path)
+        py_text = (reader.to_marker_text(blocks, markers) + "\n---\n"
+                   + reader.render_report(blocks, markers, notes))
+        js_text = readback_with_js(source, form_path)
+        if py_text.strip() != js_text.strip():
+            failures.append(f"readback {rel}: 결과 불일치\n"
+                            f"    --- py ---\n{py_text}\n    --- js ---\n{js_text}")
+        else:
+            print(f"  ✔ readback {rel}: 문단 {len(blocks)}개 일치")
+    void = result
+    del void
+
+
 def compare_capture(failures: list) -> int:
     """도식 수집도 두 엔진이 같은 블록을 내야 한다."""
     from hwpx_studio.capture import capture as py_capture, spec_to_text
@@ -311,6 +367,7 @@ def main() -> int:
 
         compare_capture(failures)
         compare_forms(failures, tmp_path)
+        compare_readback(failures, tmp_path)
 
     if failures:
         print("\n브라우저 엔진과 파이썬 엔진의 산출물이 다릅니다:\n")
