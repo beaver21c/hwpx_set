@@ -6,6 +6,7 @@
       template.hwpx     양식 원본(서식의 원천. 고치지 않는다)
       form.json         양식 카드(스타일 번호·표 골격·마커)
       build_form.py     빌더(표준 라이브러리만 씀)
+      read_hwpx.py      서식 없는 hwpx → 마커 텍스트(되돌리기)
       SKILL.md          Claude 스킬
       AGENTS.md         codex·GPT용 지시문
       README.md         사람이 읽는 사용법
@@ -28,6 +29,7 @@ _ASSETS = Path(__file__).resolve().parent / "assets"
 
 #: 꾸러미 파일 이름. 웹·CLI가 같은 이름을 쓴다.
 BUILDER = "build_form.py"
+READER = "read_hwpx.py"
 FORM_JSON = "form.json"
 TEMPLATE = "template.hwpx"
 
@@ -107,6 +109,19 @@ python build_form.py 원고.md --check-only    # 입력 검사만
 python build_form.py --markers               # 마커 목록
 ```
 
+### 이미 있는 한글 파일을 이 양식으로 바꾸기
+
+서식이 안 갖춰진 `.hwpx`가 있으면 먼저 마커 텍스트로 되돌린 뒤 다시 만든다.
+
+```bash
+python read_hwpx.py 받은문서.hwpx -o 원고.md --report 추정근거.md
+python build_form.py 원고.md -o 결과.hwpx
+```
+
+되돌리기는 **추정**이다. `추정근거.md`에 무엇을 근거로 단계를 갈랐는지 적혀 있으니
+한 번 보고 `원고.md`의 마커를 고친 뒤 만드는 것이 좋다. 그림은 읽지 못하고
+`[그림 자리]`로 남는다.
+
 AI(Claude·GPT·codex)에게는 이 폴더를 통째로 주고 "원고를 마커 텍스트로 쓴 뒤
 `build_form.py`로 만들어 달라"고 하면 된다. 지시문은 `SKILL.md`(Claude)와
 `AGENTS.md`(codex·GPT)에 들어 있다.
@@ -164,6 +179,18 @@ description: >-
 4. 경고를 고친 뒤 `python build_form.py 원고.md -o 결과.hwpx`
 5. 사용자에게 파일을 주고 **한글에서 한 번 열어 보라고** 말한다
 
+## 서식이 안 갖춰진 한글 파일을 받았을 때
+
+사용자가 내용만 든 `.hwpx`를 주면 처음부터 다시 쓰지 말고 되돌려 쓴다.
+
+```bash
+python read_hwpx.py 받은문서.hwpx -o 원고.md --report 추정근거.md
+```
+
+`추정근거.md`를 **읽고** 단계 대응이 맞는지 본다. 틀렸으면 `원고.md`의 마커를
+고친다. 그림은 읽지 못하고 `[그림 자리]`로 남으니, 조직도·절차도라면 그림을 직접
+보고 표로 옮겨 적은 뒤 사용자에게 맞는지 물어본다. 그런 뒤 3번으로 간다.
+
 ## 마커
 
 {_marker_rows(form)}
@@ -220,6 +247,9 @@ python build_form.py 원고.md -o 결과.hwpx
 
 ## 네가 할 일
 
+0. 사용자가 **내용만 든 hwpx**를 줬으면 먼저 되돌린다:
+   `python read_hwpx.py 받은문서.hwpx -o 원고.md --report 추정근거.md`
+   추정근거를 읽고 단계 대응이 맞는지 확인한 뒤 2번으로 간다
 1. 사용자의 요구대로 **본문만** `원고.md`에 마커 텍스트로 쓴다
 2. `python build_form.py 원고.md --check-only`로 검사하고 경고를 고친다
 3. 문서를 만들고 파일을 사용자에게 준다
@@ -276,6 +306,7 @@ def build_bundle(source: Any, name: str = "") -> Tuple[Dict[str, bytes], FormRes
         TEMPLATE: template_bytes,
         FORM_JSON: dump_form(form).encode("utf-8"),
         BUILDER: (_ASSETS / BUILDER).read_bytes(),
+        READER: (_ASSETS / READER).read_bytes(),
         "SKILL.md": _skill_md(form).encode("utf-8"),
         "AGENTS.md": _agents_md(form).encode("utf-8"),
         "README.md": _readme(form).encode("utf-8"),

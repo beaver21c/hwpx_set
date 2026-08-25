@@ -277,6 +277,38 @@ def run_formkit(source: str, out: Optional[str], name: str,
     return 0
 
 
+def run_readback(source: str, out: Optional[str], form: Optional[str],
+                 report: Optional[str]) -> int:
+    """서식 없는 hwpx를 마커 텍스트로 되돌린다(꾸러미의 read_hwpx.py와 같은 코드)."""
+    import importlib.util
+
+    asset = Path(__file__).resolve().parent / "assets" / "read_hwpx.py"
+    spec = importlib.util.spec_from_file_location("hwpx_studio._read_hwpx", asset)
+    reader = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = reader
+    spec.loader.exec_module(reader)
+
+    blocks = reader.read_blocks(Path(source))
+    if not blocks:
+        _echo("읽을 내용이 없음")
+        return 2
+    notes = reader.classify(blocks)
+    markers, form_name = reader.load_markers(Path(form) if form else None)
+    text = reader.to_marker_text(blocks, markers)
+    if out:
+        Path(out).write_text(text, encoding="utf-8")
+        _echo(f"마커 텍스트 저장 → {out} (양식: {form_name})")
+    else:
+        _echo(text)
+    rendered = reader.render_report(blocks, markers, notes)
+    if report:
+        Path(report).write_text(rendered, encoding="utf-8")
+        _echo(f"추정 근거 저장 → {report}")
+    else:
+        _echo(rendered)
+    return 0
+
+
 # ──────────────────────────────────────────────────────────────
 # 진입점
 # ──────────────────────────────────────────────────────────────
@@ -347,6 +379,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_form.add_argument("--report-only", action="store_true",
                         help="해부 결과만 보고 만들지 않음")
 
+    p_read = sub.add_parser(
+        "readback", help="서식 없는 hwpx → 마커 텍스트(양식에 맞춰 다시 만들 준비)")
+    p_read.add_argument("source", help="읽어 들일 .hwpx")
+    p_read.add_argument("-o", "--out", help="저장할 마커 텍스트")
+    p_read.add_argument("--form", help="대상 양식의 form.json(마커를 맞춰 준다)")
+    p_read.add_argument("--report", help="추정 근거를 저장할 경로")
+
     p_exp = sub.add_parser("export-skill", help="프로파일 → 스킬 폴더")
     p_exp.add_argument("profile")
     p_exp.add_argument("-o", "--out", default="./my-skill")
@@ -381,6 +420,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if cmd == "formkit":
             return run_formkit(args.source, args.out, args.name, args.pack,
                                args.report_only)
+        if cmd == "readback":
+            return run_readback(args.source, args.out, args.form, args.report)
         if cmd == "export-skill":
             return run_export_skill(args.profile, args.out, args.slug, args.standalone)
     except FileNotFoundError as exc:

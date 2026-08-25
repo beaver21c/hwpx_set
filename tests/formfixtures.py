@@ -79,6 +79,18 @@ def auto_bullet_form(text: str = SAMPLE) -> bytes:
     return _zip(parts)
 
 
+def without_symbols(data: bytes) -> bytes:
+    """본문 텍스트에서 줄머리 기호·번호를 뺀 문서.
+
+    'AI가 서식 없이 뽑아낸 한글 파일'에 가깝다. 되돌리기가 무엇을 근거로 계층을
+    추정하는지 시험할 때 쓴다.
+    """
+    parts = _unzip(data)
+    parts["Contents/section0.xml"] = _strip_symbols(
+        parts["Contents/section0.xml"].decode("utf-8")).encode("utf-8")
+    return _zip(parts)
+
+
 def _patch_header(header: str) -> str:
     items = "".join(_BULLET_ITEM.format(id=i + 1, char=char)
                     for i, (_name, _pp, char) in enumerate(_BULLET_LEVELS))

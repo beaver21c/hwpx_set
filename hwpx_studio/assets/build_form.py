@@ -384,6 +384,7 @@ def foot_note_xml(number: int, refs: Tuple[int, int, int], text: str) -> str:
     style, para, char = refs
     _note_instid[0] += 1
     return (
+        '<hp:ctrl>'                                   # 각주는 ctrl로 감싼다
         f'<hp:footNote number="{number}" suffixChar="41" instid="{_note_instid[0]}">'
         f'<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="TOP" '
         f'linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" '
@@ -394,7 +395,7 @@ def foot_note_xml(number: int, refs: Tuple[int, int, int], text: str) -> str:
         f'<hp:autoNum num="{number}" numType="FOOTNOTE">'
         f'<hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar=")" '
         f'supscript="0"/></hp:autoNum></hp:ctrl>'
-        f'{_t(text)}</hp:run></hp:p></hp:subList></hp:footNote>')
+        f'{_t(text)}</hp:run></hp:p></hp:subList></hp:footNote></hp:ctrl>')
 
 
 def _runs_with_notes(char: int, text: str, notes: Sequence[Dict[str, Any]],
