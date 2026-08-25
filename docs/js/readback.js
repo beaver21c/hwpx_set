@@ -7,6 +7,9 @@
  */
 
 import { unzip } from './zip.js';
+import {
+  attr, contentsOf, innerAt, num, refuseBinaryHwp, scan, unescapeXml,
+} from './xml.js';
 
 export const SYMBOL_LADDER = ['□', '■', '○', '●', '-', '–', '·', '･', '•', '※'];
 
@@ -19,57 +22,6 @@ export const NUMBER_PATTERNS = [
 ];
 
 const SKIP = new Set(['footNote', 'endNote', 'header', 'footer', 'caption']);
-const TAG_RE = /<(\/?)([\w:]+)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g;
-
-const decoder = new TextDecoder();
-
-function attr(text, name, fallback = '') {
-  const m = new RegExp(`\\b${name}="([^"]*)"`).exec(text || '');
-  return m ? m[1] : fallback;
-}
-
-function num(text, name, fallback = 0) {
-  const value = Number.parseFloat(attr(text, name, ''));
-  return Number.isFinite(value) ? value : fallback;
-}
-
-function unescapeXml(text) {
-  return text.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
-}
-
-function* scan(xml) {
-  // 정규식을 호출마다 새로 만든다. 하나를 나눠 쓰면 중첩 호출에서 lastIndex가
-  // 초기화되어 바깥 반복이 처음으로 되돌아간다(무한 반복).
-  const re = new RegExp(TAG_RE.source, 'g');
-  let m;
-  while ((m = re.exec(xml)) !== null) {
-    yield {
-      close: m[1] === '/',
-      name: m[2].includes(':') ? m[2].split(':')[1] : m[2],
-      raw: m[2],
-      attrs: m[3],
-      selfClose: m[4] === '/',
-      start: m.index,
-      end: m.index + m[0].length,
-    };
-  }
-}
-
-/** 여는 태그 하나의 안쪽 범위. 자기 이름의 중첩을 센다. */
-function blockAt(xml, tag, from) {
-  const head = xml.indexOf('>', from);
-  if (head < 0) return null;
-  let depth = 1;
-  const walker = new RegExp(`<${tag}[ >]|</${tag}>`, 'g');
-  walker.lastIndex = head + 1;
-  let m;
-  while ((m = walker.exec(xml)) !== null) {
-    depth += m[0].startsWith('</') ? -1 : 1;
-    if (depth === 0) return { inner: xml.slice(head + 1, m.index), end: walker.lastIndex };
-  }
-  return null;
-}
 
 // ──────────────────────────────────────────────────────────────
 // header.xml
@@ -136,7 +88,7 @@ function paragraphParts(inner) {
         if (piece.start < skip) continue;
         if (piece.name === 'footNote' && !piece.close) {
           // 각주 본문은 본문 글자가 아니다. 통째로 건너뛴다.
-          const block = blockAt(body, 'hp:footNote', piece.start);
+          const block = innerAt(body, 'hp:footNote', piece.start);
           notes.push([text.length, block ? noteText(block.inner) : '']);
           skip = block ? block.end : piece.end;
         } else if (piece.name === 't' && !piece.close && !piece.selfClose) {
@@ -180,12 +132,12 @@ function readSection(section, sizes, lefts, blocks) {
     if (token.close || token.selfClose) continue;
 
     if (SKIP.has(token.name)) {
-      const block = blockAt(section, token.raw, token.start);
+      const block = innerAt(section, token.raw, token.start);
       skipUntil = block ? block.end : token.end;
       continue;
     }
     if (token.name === 'tbl' && token.raw === 'hp:tbl') {
-      const block = blockAt(section, 'hp:tbl', token.start);
+      const block = innerAt(section, 'hp:tbl', token.start);
       if (!block) continue;
       const rows = [];
       for (const tr of block.inner.matchAll(/<hp:tr>([\s\S]*?)<\/hp:tr>/g)) {
@@ -199,12 +151,12 @@ function readSection(section, sizes, lefts, blocks) {
     }
     if (token.name === 'pic' && token.raw === 'hp:pic') {
       blocks.push({ kind: 'picture', text: '', notes: [] });
-      const block = blockAt(section, 'hp:pic', token.start);
+      const block = innerAt(section, 'hp:pic', token.start);
       cursor = block ? block.end : token.end;
       continue;
     }
     if (token.name === 'p' && token.raw === 'hp:p') {
-      const block = blockAt(section, 'hp:p', token.start);
+      const block = innerAt(section, 'hp:p', token.start);
       if (!block) continue;
       if (/<hp:tbl[ >]|<hp:pic[ >]/.test(block.inner)) continue;   // 안쪽을 따로 훑는다
       const { text, notes, charId } = paragraphParts(block.inner);
@@ -328,7 +280,7 @@ export function toMarkerText(blocks, markers) {
   return `${lines.join('\n').replace(/\s+$/, '')}\n`;
 }
 
-export function renderReport(blocks, markers, notes) {
+export function renderReadbackReport(blocks, markers, notes) {
   const paras = blocks.filter((b) => b.kind === 'para');
   const depths = [...new Set(paras.map((b) => b.depth))].sort((a, b) => a - b);
   const out = ['# 읽어 들인 결과', '',
@@ -357,25 +309,15 @@ export function renderReport(blocks, markers, notes) {
 
 /** hwpx 바이트 + 대상 양식 → {text, report}. */
 export async function readBack(buffer, form) {
-  const head = new Uint8Array(buffer.slice(0, 8));
-  if (head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0) {
-    throw new Error('한글 바이너리(.hwp) 파일입니다. 한글에서 [다른 이름으로 저장] → '
-      + "파일 형식 'HWPX 문서'로 저장한 뒤 올려 주세요.");
-  }
-  const zipped = await unzip(buffer);
-  const parts = {};
-  for (const [name, bytes] of zipped) {
-    if (name.startsWith('Contents/') && name.endsWith('.xml')) {
-      parts[name] = decoder.decode(bytes);
-    }
-  }
+  refuseBinaryHwp(buffer);
+  const parts = contentsOf(await unzip(buffer));
   const blocks = readBlocks(parts);
   if (!blocks.length) throw new Error('읽을 내용이 없습니다.');
   const notes = classify(blocks);
   const markers = ((form || {}).levels || []).map((lv) => lv.marker).filter(Boolean);
   return {
     text: toMarkerText(blocks, markers),
-    report: renderReport(blocks, markers, notes),
+    report: renderReadbackReport(blocks, markers, notes),
     blocks,
   };
 }

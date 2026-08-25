@@ -134,3 +134,58 @@ pre {
 
 .foot { padding: 8px 16px 32px; font-size: 0.85rem; color: var(--muted); }
 .foot a { color: var(--accent); }
+
+/* 서비스 선택 --------------------------------------------------------- */
+.lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin: 12px auto 4px;
+}
+.lane {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.lane[aria-pressed="true"] {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.lane-no {
+  font: 600 0.75rem/1 var(--mono);
+  color: var(--accent);
+  letter-spacing: 0.08em;
+}
+.lane-name { font-weight: 600; font-size: 0.95rem; }
+.lane-why { font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
+
+/* 해부·추정 보고서 ---------------------------------------------------- */
+.report { font-size: 0.88rem; overflow-x: auto; }
+.report h1 { font-size: 1rem; margin: 0 0 8px; }
+.report h2 { font-size: 0.9rem; margin: 16px 0 6px; color: var(--muted); }
+.report table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+.report th, .report td {
+  text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.report th { color: var(--muted); font-weight: 600; font-size: 0.78rem; }
+.report td:last-child { white-space: normal; }
+.report code { font-family: var(--mono); font-size: 0.85em; }
+.report ul { margin: 4px 0; padding-left: 18px; }
+.report li { margin-bottom: 3px; }
+.report strong { font-weight: 600; }
+
+input[type="file"] {
+  width: 100%;
+  margin-top: 4px;
+  padding: 9px 10px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 0.85rem;
+}

@@ -264,6 +264,43 @@ if __name__ == "__main__":
 '''
 
 
+FORMKIT_SCRIPT = '''#!/usr/bin/env python3
+"""사용자 양식(.hwpx) → 그 양식 전용 꾸러미.
+
+    python scripts/formkit.py 양식.hwpx -o 꾸러미/
+    python scripts/formkit.py 양식.hwpx --report-only     # 해부 결과만 보기
+
+꾸러미의 build_form.py는 양식의 header.xml을 한 바이트도 건드리지 않아
+글꼴·자동 글머리표·번호매기기·쪽 설정이 원본 그대로다(SKILL.md '기관 양식' 절).
+"""
+
+import argparse
+import sys
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("source", help="양식이 될 .hwpx")
+    ap.add_argument("-o", "--out", help="꾸러미를 풀어 놓을 폴더")
+    ap.add_argument("--name", default="", help="양식 이름(기본: 파일 이름)")
+    ap.add_argument("--pack", help="꾸러미를 .skill 한 파일로 묶어 저장")
+    ap.add_argument("--report-only", action="store_true")
+    args = ap.parse_args()
+
+    try:
+        from hwpx_studio.cli import run_formkit
+    except ImportError:
+        print("hwpx-studio가 필요합니다: pip install hwpx-studio", file=sys.stderr)
+        return 2
+    return run_formkit(args.source, args.out, args.name, args.pack,
+                       args.report_only)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
+
+
 def export_skill(profile: Dict[str, Any], out_dir: str,
                  slug: str = "hwpx-report", standalone: bool = False) -> List[str]:
     """스킬 폴더를 만들고 생성된 파일 목록을 돌려준다."""
@@ -303,11 +340,13 @@ def export_skill(profile: Dict[str, Any], out_dir: str,
         BUILD_SCRIPT.format(profile_file=profile_file), encoding="utf-8")
     (out / "scripts" / "capture.py").write_text(
         CAPTURE_SCRIPT.format(profile_file=profile_file), encoding="utf-8")
+    (out / "scripts" / "formkit.py").write_text(FORMKIT_SCRIPT, encoding="utf-8")
     (out / "prompt.txt").write_text(prompt_text(profile), encoding="utf-8")
 
     created = [str(out / "SKILL.md"), str(out / profile_file),
                str(out / "scripts" / "build.py"),
-               str(out / "scripts" / "capture.py"), str(out / "prompt.txt")]
+               str(out / "scripts" / "capture.py"),
+               str(out / "scripts" / "formkit.py"), str(out / "prompt.txt")]
 
     if standalone:
         pkg_dir = out / "scripts" / "hwpx_studio"

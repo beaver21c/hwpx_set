@@ -9,6 +9,7 @@
 import { FORM_SCRIPTS, FORM_TEMPLATES } from '../assets.js';
 import { analyzeParts, dumpForm } from './formkit.js';
 import { unzip, zip } from './zip.js';
+import { contentsOf, refuseBinaryHwp } from './xml.js';
 
 export const BUILDER = 'build_form.py';
 export const READER = 'read_hwpx.py';
@@ -16,22 +17,11 @@ export const FORM_JSON = 'form.json';
 export const TEMPLATE = 'template.hwpx';
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 
 /** hwpx 바이트 → {이름: 텍스트} (Contents/*.xml만). */
 export async function readContents(buffer) {
-  const head = new Uint8Array(buffer.slice(0, 8));
-  if (head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0) {
-    throw new Error('한글 바이너리(.hwp) 파일입니다. 한글에서 [다른 이름으로 저장] → '
-      + "파일 형식 'HWPX 문서'로 저장한 뒤 올려 주세요.");
-  }
-  const parts = await unzip(buffer);
-  const out = {};
-  for (const [name, bytes] of parts) {
-    if (name.startsWith('Contents/') && name.endsWith('.xml')) {
-      out[name] = decoder.decode(bytes);
-    }
-  }
+  refuseBinaryHwp(buffer);
+  const out = contentsOf(await unzip(buffer));
   if (!Object.keys(out).length) throw new Error('hwpx 안에서 본문을 찾지 못했습니다.');
   return out;
 }
