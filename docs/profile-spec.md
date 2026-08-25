@@ -22,7 +22,7 @@ hwpx-studio extract 기존문서.hwpx -o my.json      # 기존 hwpx에서 역생
 | `table` | 표 서식 + 표 셀 스타일 3종 |
 | `image` | 그림 기본 폭·글자처럼 취급 |
 | `diagram` | 도식 색·크기·렌더 방식 |
-| `rules` | 검사 규칙(`min_children`, `period_policy`) |
+| `rules` | 검사 규칙(`min_children`, `head_pattern`, `period_policy`) |
 | `signature` | 문서 끝 서명 문단(기본 빈 값 = 삽입 안 함) |
 
 ## 2. levels[]
@@ -75,14 +75,27 @@ hwpx-studio extract 기존문서.hwpx -o my.json      # 기존 hwpx에서 역생
 
 `docs/diagram-guide.md` §3 참조.
 
-## 5. rules
+## 5. footnote
+
+각주 본문의 서식. 기본값은 **8pt 회색**이다. 자세한 내용은 `docs/footnote-guide.md` §4.
+
+| 키 | 기본값 | 뜻 |
+|---|---|---|
+| `size_pt` / `color` | `8` / `"#808080"` | 글자 크기 / 글자색 |
+| `font` / `bold` | `"light"` / `false` | 글꼴 역할 / 굵게 |
+| `line_spacing` / `align` | `130` / `"JUSTIFY"` | 줄 간격(%) / 정렬 |
+| `name` / `eng_name` | `"각주"` / `"Footnote"` | 스타일 이름. **바꾸지 말 것** — 한글이 이 이름으로 각주 스타일을 찾는다 |
+
+## 6. rules
 
 | 키 | 뜻 |
 |---|---|
 | `min_children` | `{"L1": 2}` — L1 아래 하위 항목 2개 이상 권장. lint의 `balance` 검사 |
+| `head_pattern` | `{"L1": "^【[^】]+】"}` — 그 레벨 본문 앞에 있어야 할 머릿글 정규식. lint의 `head` 검사. 비워 두면 검사하지 않는다 |
 | `period_policy` | `single_sentence_no_period`(기본) / `always_period` / `never_period` / `off` |
+| `footnote_position` | 각주 번호를 문장 끝 마침표의 앞에 두는가 뒤에 두는가. `before_period`(기본, 국내 관행) / `after_period`(시카고식) / `off`. lint의 `footnote` 검사 |
 
-## 6. 검증
+## 7. 검증
 
 ```python
 from hwpx_studio.profile import load_profile, validate_profile
@@ -90,9 +103,11 @@ validate_profile(load_profile("my.json"))   # [] 이면 통과
 ```
 
 검증이 잡는 것: `mode` 값, 레벨 `key` 중복, `marker` 중복, 크기·글꼴·정렬 값,
-색상 형식, `anchor_level`·`min_children`이 없는 레벨을 가리키는 경우.
+색상 형식, `anchor_level`·`min_children`·`head_pattern`이 없는 레벨을 가리키는 경우,
+`head_pattern`이 정규식이 아닌 경우, `footnote` 블록의 색·크기·글꼴·정렬 값,
+`footnote_position` 값.
 
-## 7. 추출(extract)이 판단하는 방식
+## 8. 추출(extract)이 판단하는 방식
 
 | 판단 | 규칙 |
 |---|---|
@@ -107,7 +122,7 @@ validate_profile(load_profile("my.json"))   # [] 이면 통과
 임계값은 `hwpx_studio/extractor.py`의 `TABLE_ONLY_RATIO`, `LAYOUT_TABLE_MAX_CELLS`,
 `SHORT_TEXT_LEN`, `SHORT_TEXT_RATIO`로 조정한다.
 
-## 8. ID 배정 방식
+## 9. ID 배정 방식
 
 프로파일에는 한글 내부 ID(charPr/paraPr/style)가 없다. 엔진이 템플릿의 `itemCnt`를
 읽어 **비어 있는 번호부터 순서대로** 배정하므로, 레벨을 늘리거나 줄여도 ID 충돌이

@@ -18,6 +18,19 @@
 > - **M7-0 확인됨**: 셀 한 변 테두리 연결선은 한글에서 정상 표시된다(한글 모바일 뷰어).
 >   §7.4의 대안(배경색 셀 대체)은 불필요. 근거·프로토타입과의 차이는 `prototypes/README.md`
 >
+> - **M8 양식 보존 방식 추가(설계 원안 밖)**: 원안은 서식을 프로파일로 옮겨 적어
+>   문서를 새로 짓는 길 하나뿐이었다. 그 길로는 한글의 자동 글머리표·번호매기기
+>   (`paraPr`의 `hh:heading`)를 옮기지 못한다. 그래서 양식 파일을 **템플릿으로 그대로
+>   두고 본문 문단만 갈아 끼우는** 길을 더했다(`formkit.py` → `assets/build_form.py`).
+>   `header.xml`을 한 바이트도 건드리지 않으므로 서식이 재현이 아니라 **보존**된다.
+>   근거·한계는 `docs/form-guide.md`
+> - **M9 되돌리기 추가**: 서식 없는 hwpx를 마커 텍스트로 되돌린다
+>   (`assets/read_hwpx.py`). 줄머리 기호·번호·글자 크기를 근거로 계층을 **추정**하고
+>   근거를 보고서로 남긴다. 그림은 읽지 못한다
+> - **M6(브라우저 앱) 착수·완료**: 웹 앱은 네 갈래(양식 꾸러미·도식·되돌리기·바로
+>   쓰기)로 나뉜다. 해부·되돌리기는 브라우저에도 이식했고
+>   `tools/compare_js_python.py`가 두 엔진의 `form.json`과 마커 텍스트를 대조한다
+
 > ---
 
 # hwpx-studio 설계 명세서 (통합본, Claude Code 착수용)
@@ -132,7 +145,7 @@ hwpx-studio/
 │   ├── diagram.py                 # :::diagram 블록 → 표/이미지
 │   ├── extractor.py               # hwpx → 프로파일 JSON
 │   ├── preview.py                 # HTML 근사 미리보기
-│   ├── lint.py                    # 계층 균형·기호 중복·온점 검사
+│   ├── lint.py                    # 계층 균형·기호 중복·온점·각주 번호 자리 검사
 │   ├── export_skill.py            # 프로파일 → 스킬 폴더
 │   └── cli.py
 ├── profiles/
@@ -286,7 +299,7 @@ hwpx-studio/
 7. 출력: JSON + `extract_report.md`(클러스터별 예시·빈도·근거). 사용자 확인 후 저장
 - 한글 번호매기기 기능 문서(`hh:heading type=NUMBER|BULLET`)는 `"prefix":"UNKNOWN_AUTO"` 표시 [논리적 추론]
 
-### 8.5 lint.py — 계층 균형(`rules.min_children`), 기호 중복, 온점, 머릿글(경고), 표·도식 앞뒤 빈 줄. `--strict` 시 오류면 중단
+### 8.5 lint.py — 계층 균형(`rules.min_children`), 기호 중복, 온점, 머릿글, 각주 번호 자리(`rules.footnote_position`), 표·도식 앞뒤 빈 줄. 모두 경고. `--strict` 시 오류면 중단
 ### 8.6 preview.py — `render_layout_preview()` 래퍼. 고지: "근사 미리보기. 글꼴·줄바꿈·도식 연결선은 한글 뷰어에서 확인"
 ### 8.7 export_skill.py — 프로파일 → `SKILL.md`(레벨표·마커·균형 규칙 치환) + `scripts/build.py`(`--standalone`: 엔진+파서+프로파일 1파일 인라인) + `prompt.txt`(타 AI용 300자 지시문)
 ### 8.8 cli.py

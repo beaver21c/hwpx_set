@@ -1,7 +1,12 @@
 name: 웹 앱 배포 (GitHub Pages)
 
-# docs/ 를 GitHub Pages로 배포한다.
-# Pages가 꺼져 있으면 configure-pages가 켠다(enablement: true).
+# docs/ 를 GitHub Pages로 올린다. 켜져 있으면 main에 밀 때마다 저절로 배포된다.
+#
+# 아직 안 켰다면 저장소 소유자가 **한 번만** 켜야 한다(Actions 토큰으로는 켤 수 없다).
+#   저장소 → Settings → Pages → Build and deployment → Source: GitHub Actions
+# 그 뒤 Actions → 이 워크플로 → Run workflow 를 누르면 곧바로 올라간다.
+#
+# 병합 전 브랜치로 미리 보고 싶으면 Run workflow에서 브랜치를 고르면 된다.
 
 on:
   push:
@@ -46,17 +51,26 @@ jobs:
         if: steps.pages.outcome == 'failure'
         run: |
           {
-            echo "## ⚠ GitHub Pages를 한 번 켜야 합니다"
+            echo "# ⚠ GitHub Pages를 한 번 켜야 합니다"
             echo
-            echo "이 워크플로의 토큰으로는 Pages를 켤 수 없습니다(권한 밖)."
-            echo "저장소 소유자가 **한 번만** 아래를 하면 이후로는 자동 배포됩니다."
+            echo "이 워크플로의 토큰으로는 Pages를 켤 수 없습니다."
+            echo "저장소를 만든 사람이 **한 번만** 아래를 하면, 이후로는"
+            echo "\`main\`에 밀 때마다 저절로 배포됩니다."
             echo
-            echo "1. 저장소 → **Settings** → 왼쪽 **Pages**"
-            echo "2. *Build and deployment* → Source를 **GitHub Actions**로"
-            echo "3. 이 워크플로를 다시 실행(Actions → 웹 앱 배포 → Run workflow)"
+            echo "## 켜는 법 (1분)"
             echo
-            echo "그때까지는 \`python tools/build_standalone.py\`로 만드는"
-            echo "단일 HTML(\`dist/hwpx-studio.html\`)을 쓰면 됩니다."
+            echo "1. <https://github.com/${{ github.repository }}/settings/pages> 열기"
+            echo "2. **Build and deployment → Source** 를 \`GitHub Actions\` 로 바꾸기"
+            echo "3. <https://github.com/${{ github.repository }}/actions/workflows/pages.yml>"
+            echo "   → **Run workflow** (브랜치를 골라 병합 전에도 올릴 수 있습니다)"
+            echo
+            echo "켜고 나면 주소는 \`https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/\` 입니다."
+            echo
+            echo "## 그때까지 쓰는 법"
+            echo
+            echo "- 이 저장소 Actions의 **웹앱-단일파일** 아티팩트를 내려받아 그 HTML을 그냥 엽니다"
+            echo "  (인터넷 없이도 됩니다)"
+            echo "- 또는 \`python tools/build_standalone.py\` 로 직접 만듭니다"
           } >> "$GITHUB_STEP_SUMMARY"
           exit 1
       - uses: actions/upload-pages-artifact@v3
@@ -64,3 +78,12 @@ jobs:
           path: docs
       - id: deployment
         uses: actions/deploy-pages@v4
+      - name: 주소 남기기
+        run: |
+          {
+            echo "# 웹 앱이 올라갔습니다"
+            echo
+            echo "<${{ steps.deployment.outputs.page_url }}>"
+            echo
+            echo "브랜치: \`${{ github.ref_name }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

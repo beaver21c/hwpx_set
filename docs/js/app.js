@@ -2,6 +2,10 @@
 
 import { HWPX_PROFILES, HWPX_TEMPLATE_B64 } from '../assets.js';
 import { base64ToBytes, buildFromText, lintItems, mergeProfile, parseText } from './hwpx-studio.js';
+import { captureText, specToText } from './capture.js';
+import { buildBundle, packBundle, readContents } from './bundle.js';
+import { analyzeParts } from './formkit.js';
+import { readBack } from './readback.js';
 
 const STORAGE_KEY = 'hwpx-studio.draft.v1';
 
@@ -34,9 +38,11 @@ const SAMPLES = {
 ○ 처리 기간은 목표 대비 3일 단축
 - 사전 검토 절차를 통합한 효과로 판단
 - 접수량이 많은 기간에는 지연 사례가 발생
-○ 이용 건수는 목표를 상회
+○ 이용 건수는 목표를 상회[^1]
 - 안내 창구 확대가 주된 요인
 - 재방문 비율은 [확인 필요]
+
+[^1]: 내부 행정통계, 2025년 상반기 기준.
 `,
   diagram: `# 추진 체계
 
@@ -193,6 +199,261 @@ async function runBuild() {
   }
 }
 
+const CAPTURE_SAMPLES = {
+  mermaid: `flowchart TD
+    A[○○위원회] --> B[기획분과]
+    A --> C[운영분과]
+    A -.-> D[자문단]
+    B --> E[정책팀]
+    B --> F[예산팀]
+    style A fill:#C00000,color:#FFFFFF
+    classDef body fill:#2E75B6,color:#FFFFFF
+    class B,C body
+    style D fill:#FFF2CC,stroke:#BF8F00`,
+  svg: `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300">
+  <rect x="230" y="20" width="140" height="40" fill="#C00000" stroke="#000000"/>
+  <text x="300" y="45" fill="#FFFFFF">위원회</text>
+  <rect x="60" y="140" width="140" height="40" fill="#2E75B6" stroke="#1F3864"/>
+  <text x="130" y="165" fill="#FFFFFF">기획분과</text>
+  <rect x="400" y="140" width="140" height="40" fill="#FFF2CC" stroke="#BF8F00"/>
+  <text x="470" y="165" fill="#000000">자문단</text>
+  <line x1="300" y1="60" x2="130" y2="140" stroke="#1F3864"/>
+  <path d="M300,60 L470,100 L470,140" stroke="#BF8F00" fill="none" stroke-dasharray="4 3"/>
+</svg>`,
+};
+
+/** 붙여 넣은 도식을 읽어 본문 끝에 도식 블록으로 덧붙인다. */
+function runCapture() {
+  const source = $('capture-text').value.trim();
+  const status = $('capture-status');
+  const say = (message, kind = '') => {
+    status.textContent = message;
+    status.className = `status ${kind}`.trim();
+  };
+  if (!source) { say('읽을 내용을 붙여 넣으세요.', 'bad'); return; }
+
+  let result;
+  try {
+    result = captureText(source, 'auto', $('capture-title').value.trim());
+  } catch (error) {
+    console.error(error);
+    say(`읽지 못했습니다: ${error.message}`, 'bad');
+    return;
+  }
+  if (!result.spec.lines.length) {
+    say(result.warnings[0] || '도식을 찾지 못했습니다.', 'bad');
+    return;
+  }
+
+  const block = specToText(result.spec);
+  const body = bodyText.value.replace(/\s*$/, '');
+  bodyText.value = `${body ? `${body}\n\n` : ''}${block}\n`;
+  bodyText.scrollTop = bodyText.scrollHeight;
+  updateStat();
+
+  const boxes = result.spec.type === 'flow'
+    ? result.spec.lines.join(' ').split('→').length
+    : result.spec.lines.length;
+  const note = result.warnings.length ? ` — ${result.warnings.join(' / ')}` : '';
+  say(`${result.source}에서 상자 ${boxes}개를 읽어 본문에 넣었습니다${note}`,
+    result.warnings.length ? '' : 'ok');
+}
+
+// ──────────────────────────────────────────────────────────────
+// 공통 거들기
+// ──────────────────────────────────────────────────────────────
+function saveFile(data, name, type = 'application/octet-stream') {
+  const blob = new Blob([data], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name.replace(/[\\/]/g, '');
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function statusOf(id) {
+  return (text, kind = '') => {
+    const node = $(id);
+    node.textContent = text;
+    node.className = `status${kind ? ` ${kind}` : ''}`;
+  };
+}
+
+async function fileBytes(input) {
+  const file = input.files && input.files[0];
+  if (!file) return null;
+  return { buffer: await file.arrayBuffer(), name: file.name };
+}
+
+const stripExtension = (name) => name.replace(/\.hwpx$/i, '');
+
+/**
+ * 보고서 마크다운을 아주 얕게 HTML로. 표·제목·목록·굵게·코드만 본다.
+ * 우리가 만든 문자열만 넣으므로 값은 언제나 escapeHtml을 거친다.
+ */
+function renderMarkdown(text) {
+  const inline = (value) => escapeHtml(value)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  const out = [];
+  let table = null;
+
+  const closeTable = () => {
+    if (!table) return;
+    const [head, ...rows] = table;
+    out.push('<table><thead><tr>'
+      + head.map((c) => `<th>${inline(c)}</th>`).join('')
+      + '</tr></thead><tbody>'
+      + rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')
+      + '</tbody></table>');
+    table = null;
+  };
+
+  for (const line of text.split('\n')) {
+    const row = line.trim();
+    if (row.startsWith('|') && row.endsWith('|')) {
+      const cells = row.slice(1, -1).split('|').map((c) => c.trim());
+      if (cells.every((c) => /^:?-{2,}:?$/.test(c))) continue;   // 구분 줄
+      (table = table || []).push(cells);
+      continue;
+    }
+    closeTable();
+    if (!row) continue;
+    if (row.startsWith('## ')) out.push(`<h2>${inline(row.slice(3))}</h2>`);
+    else if (row.startsWith('# ')) out.push(`<h1>${inline(row.slice(2))}</h1>`);
+    else if (row.startsWith('- ')) {
+      if (!out.length || !out[out.length - 1].startsWith('<ul>')) out.push('<ul></ul>');
+      const last = out.length - 1;
+      out[last] = out[last].replace('</ul>', `<li>${inline(row.slice(2))}</li></ul>`);
+    } else out.push(`<p>${inline(row)}</p>`);
+  }
+  closeTable();
+  return out.join('');
+}
+
+// ──────────────────────────────────────────────────────────────
+// ① 양식으로 도구 만들기
+// ──────────────────────────────────────────────────────────────
+let bundleState = null;
+
+async function runFormkit() {
+  const say = statusOf('form-status');
+  const button = $('form-run');
+  const picked = await fileBytes($('form-file'));
+  if (!picked) { say('양식 파일(.hwpx)을 고르세요.', 'bad'); return; }
+
+  button.disabled = true;
+  say('해부하는 중…');
+  try {
+    const name = ($('form-name').value || '').trim() || stripExtension(picked.name);
+    const bullets = $('form-bullets').value;
+    const { files, form, report } = await buildBundle(picked.buffer, name, bullets);
+    bundleState = { files, form };
+    $('form-report').innerHTML = renderMarkdown(report);
+    $('form-result').hidden = false;
+    const invented = (form.levels || []).filter((lv) => lv.marker_invented).length;
+    const clash = (form.notes || []).filter(
+      (note) => note.includes('두 번 찍힌다') || note.includes('찍히지 않는다')).length;
+    say(`레벨 ${form.levels.length}개를 찾았습니다`
+      + (invented ? ` (그 가운데 ${invented}개는 마커를 임의로 정했습니다)` : '')
+      + `. 꾸러미 ${files.size}개 파일 준비됨.`
+      + (clash ? ` ⚠ 글머리 기호 선택이 양식과 어긋나는 레벨 ${clash}개 — 아래를 볼 것.` : ''),
+    clash ? 'bad' : 'ok');
+  } catch (error) {
+    console.error(error);
+    bundleState = null;
+    $('form-result').hidden = true;
+    say(error.message || '읽지 못했습니다.', 'bad');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function downloadBundle(extension) {
+  if (!bundleState) return;
+  const say = statusOf('form-status');
+  const { files, form } = bundleState;
+  const packed = await packBundle(files, form.name);
+  saveFile(packed, `${form.name}.${extension}`, 'application/zip');
+  say(`${form.name}.${extension} 저장됨 (${packed.length.toLocaleString('ko-KR')} bytes)`, 'ok');
+}
+
+// ──────────────────────────────────────────────────────────────
+// ③ 서식 없는 문서를 양식에 맞추기
+// ──────────────────────────────────────────────────────────────
+let convertState = null;
+
+async function runConvert() {
+  const say = statusOf('convert-status');
+  const button = $('convert-run');
+  const picked = await fileBytes($('convert-file'));
+  if (!picked) { say('내용이 든 파일(.hwpx)을 고르세요.', 'bad'); return; }
+
+  button.disabled = true;
+  say('읽는 중…');
+  try {
+    const formFile = await fileBytes($('convert-form'));
+    let form = null;
+    let bundle = null;
+    if (formFile) {
+      const name = stripExtension(formFile.name);
+      bundle = await buildBundle(formFile.buffer, name);
+      form = bundle.form;
+    }
+    const { text, report } = await readBack(picked.buffer, form);
+    $('convert-text').value = text;
+    $('convert-report').innerHTML = renderMarkdown(report);
+    $('convert-result').hidden = false;
+    $('convert-bundle').hidden = !bundle;
+    convertState = { text, bundle, name: stripExtension(picked.name) };
+    say(form
+      ? `${form.name} 양식의 마커로 되돌렸습니다. 근거를 확인하세요.`
+      : '되돌렸습니다. 양식 파일을 같이 올리면 그 양식의 마커로 맞춰 줍니다.', 'ok');
+  } catch (error) {
+    console.error(error);
+    convertState = null;
+    $('convert-result').hidden = true;
+    say(error.message || '읽지 못했습니다.', 'bad');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function downloadConverted() {
+  if (!convertState) return;
+  saveFile(convertState.text, `${convertState.name}.md`, 'text/markdown');
+}
+
+async function downloadConvertBundle() {
+  if (!convertState || !convertState.bundle) return;
+  const say = statusOf('convert-status');
+  const { files, form } = convertState.bundle;
+  const withDraft = new Map(files);
+  withDraft.set('원고.md', new TextEncoder().encode(convertState.text));
+  const packed = await packBundle(withDraft, form.name);
+  saveFile(packed, `${form.name}.zip`, 'application/zip');
+  say(`원고가 든 꾸러미를 저장했습니다 (${packed.length.toLocaleString('ko-KR')} bytes). `
+    + 'AI에 통째로 주고 "원고.md를 다듬어 build_form.py로 만들어 달라"고 하세요.', 'ok');
+}
+
+// ──────────────────────────────────────────────────────────────
+// 서비스 전환
+// ──────────────────────────────────────────────────────────────
+const LANE_KEY = 'hwpx-studio.lane.v1';
+
+function showLane(lane) {
+  document.querySelectorAll('[data-lane]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.lane === lane));
+  });
+  document.querySelectorAll('[data-panel]').forEach((panel) => {
+    panel.hidden = panel.dataset.panel !== lane;
+  });
+  try { localStorage.setItem(LANE_KEY, lane); } catch { /* 무시 */ }
+}
+
 function init() {
   for (const [name, profile] of Object.entries(HWPX_PROFILES)) {
     const option = document.createElement('option');
@@ -213,7 +474,35 @@ function init() {
   bodyText.addEventListener('input', updateStat);
   profileSelect.addEventListener('change', () => { renderMarkers(); updateStat(); });
   $('build').addEventListener('click', runBuild);
+  $('capture-run').addEventListener('click', runCapture);
+  document.querySelectorAll('[data-capture-sample]').forEach((button) => {
+    button.addEventListener('click', () => {
+      $('capture-text').value = CAPTURE_SAMPLES[button.dataset.captureSample];
+    });
+  });
   $('check').addEventListener('click', runCheck);
+  $('form-run').addEventListener('click', runFormkit);
+  $('form-bullets').addEventListener('change', () => {
+    if ($('form-file').files.length) runFormkit();      // 고르면 곧바로 다시 해부한다
+  });
+  $('form-download').addEventListener('click', () => downloadBundle('zip'));
+  $('form-download-skill').addEventListener('click', () => downloadBundle('skill'));
+  $('convert-run').addEventListener('click', runConvert);
+  $('convert-download').addEventListener('click', downloadConverted);
+  $('convert-bundle').addEventListener('click', downloadConvertBundle);
+  $('convert-copy').addEventListener('click', () => {
+    if (!convertState) return;
+    bodyText.value = convertState.text;
+    updateStat();
+    showLane('write');
+    setStatus('되돌린 원고를 본문 칸에 넣었습니다.');
+  });
+  document.querySelectorAll('[data-lane]').forEach((button) => {
+    button.addEventListener('click', () => showLane(button.dataset.lane));
+  });
+  let lane = 'form';
+  try { lane = localStorage.getItem(LANE_KEY) || 'form'; } catch { /* 무시 */ }
+  showLane(document.querySelector(`[data-panel="${lane}"]`) ? lane : 'form');
   document.querySelectorAll('[data-sample]').forEach((button) => {
     button.addEventListener('click', () => {
       bodyText.value = SAMPLES[button.dataset.sample];

@@ -6,6 +6,7 @@
     hwpx-studio lint     input.md -p profile.json [--strict]
     hwpx-studio preview  out.hwpx -o preview.html
     hwpx-studio diagram  "대표 > 기획부, 운영부" -o org.hwpx
+    hwpx-studio capture  조직도.svg --hwpx 조직도.hwpx
     hwpx-studio export-skill profile.json -o ./my-skill [--standalone]
 """
 
@@ -191,6 +192,54 @@ def run_diagram(text: str, out_path: str, profile_arg: Optional[str],
     return 0
 
 
+def run_capture(source: str, out_path: Optional[str], kind: str, title: str,
+                 hwpx_path: Optional[str], profile_arg: Optional[str]) -> int:
+    """남의 도식(Mermaid·SVG·HTML)을 읽어 `:::diagram` 블록으로 옮긴다."""
+    import sys
+
+    from .capture import capture, capture_text
+
+    if source == "-":
+        result = capture_text(sys.stdin.read(), kind, title)
+    else:
+        result = capture(source, kind, title)
+
+    for warn in result.warnings:
+        _echo(f"[경고] {warn}")
+    if not result.spec.lines:
+        _echo("도식을 읽지 못했다. --kind로 형식을 지정하거나 원본을 확인할 것")
+        return 2
+
+    text = result.to_text()
+    if result.spec.type == "flow":
+        from .diagram import _ARROW_SPLIT
+
+        boxes = sum(len([p for p in _ARROW_SPLIT.split(ln) if p.strip()])
+                    for ln in result.spec.lines)
+    else:
+        boxes = sum(1 for ln in result.spec.lines if ln.strip())
+    _echo(f"읽음: {result.source} · 상자 {boxes}개 · 유형 {result.spec.type}")
+
+    if out_path:
+        with open(out_path, "w", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+        _echo(f"생성: {out_path}")
+    else:
+        _echo("")
+        _echo(text)
+
+    if hwpx_path:
+        from .engine import build_document
+
+        profile = _load(profile_arg)
+        built = build_document(profile, [{"type": "diagram", "spec": result.spec.to_dict()}],
+                               hwpx_path)
+        for warn in built.warnings:
+            _echo(f"[경고] {warn}")
+        _echo(f"생성: {hwpx_path}")
+    return 0
+
+
 def run_export_skill(profile_arg: str, out_dir: str, slug: str = "hwpx-report",
                      standalone: bool = False) -> int:
     from .export_skill import export_skill
@@ -199,6 +248,65 @@ def run_export_skill(profile_arg: str, out_dir: str, slug: str = "hwpx-report",
     created = export_skill(profile, out_dir, slug=slug, standalone=standalone)
     for path in created:
         _echo(f"생성: {path}")
+    return 0
+
+
+def run_formkit(source: str, out: Optional[str], name: str,
+                pack: Optional[str], report_only: bool,
+                bullets: str = "auto") -> int:
+    """양식 hwpx를 해부해 그 양식 전용 꾸러미를 만든다."""
+    from .export_form import build_bundle, pack_bundle, write_bundle
+
+    files, result = build_bundle(source, name=name, bullets=bullets)
+    _echo(result.report)
+    if report_only:
+        return 0
+    if not out and not pack:
+        _echo("만들 곳을 지정할 것: -o 폴더 또는 --pack 파일.skill")
+        return 2
+
+    root = result.form["name"]
+    if out:
+        path = write_bundle(files, Path(out))
+        _echo(f"꾸러미 저장 → {path} ({len(files)}개 파일)")
+    if pack:
+        data = pack_bundle(files, root)
+        Path(pack).write_bytes(data)
+        _echo(f"꾸러미 묶음 저장 → {pack} ({len(data):,}바이트)")
+    if result.notes:
+        _echo("살펴볼 것: " + " / ".join(result.notes))
+    return 0
+
+
+def run_readback(source: str, out: Optional[str], form: Optional[str],
+                 report: Optional[str]) -> int:
+    """서식 없는 hwpx를 마커 텍스트로 되돌린다(꾸러미의 read_hwpx.py와 같은 코드)."""
+    import importlib.util
+
+    asset = Path(__file__).resolve().parent / "assets" / "read_hwpx.py"
+    spec = importlib.util.spec_from_file_location("hwpx_studio._read_hwpx", asset)
+    reader = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = reader
+    spec.loader.exec_module(reader)
+
+    blocks = reader.read_blocks(Path(source))
+    if not blocks:
+        _echo("읽을 내용이 없음")
+        return 2
+    notes = reader.classify(blocks)
+    markers, form_name = reader.load_markers(Path(form) if form else None)
+    text = reader.to_marker_text(blocks, markers)
+    if out:
+        Path(out).write_text(text, encoding="utf-8")
+        _echo(f"마커 텍스트 저장 → {out} (양식: {form_name})")
+    else:
+        _echo(text)
+    rendered = reader.render_report(blocks, markers, notes)
+    if report:
+        Path(report).write_text(rendered, encoding="utf-8")
+        _echo(f"추정 근거 저장 → {report}")
+    else:
+        _echo(rendered)
     return 0
 
 
@@ -253,6 +361,36 @@ def build_parser() -> argparse.ArgumentParser:
     p_dia.add_argument("--title", default="")
     p_dia.add_argument("--render", choices=["table", "image"])
 
+    p_cap = sub.add_parser("capture", help="남의 도식(Mermaid·SVG·HTML) → 도식 블록")
+    p_cap.add_argument("source", help="파일 경로, 또는 -(표준입력)")
+    p_cap.add_argument("-o", "--out", help="도식 블록을 저장할 텍스트 파일(없으면 화면 출력)")
+    p_cap.add_argument("--kind", default="auto",
+                       choices=["auto", "mermaid", "svg", "html"])
+    p_cap.add_argument("--title", default="")
+    p_cap.add_argument("--hwpx", help="읽은 도식을 곧바로 hwpx로도 생성")
+    p_cap.add_argument("-p", "--profile")
+
+    p_form = sub.add_parser(
+        "formkit", help="양식 hwpx → 그 양식 전용 꾸러미(빌더·스킬·codex 지시문)")
+    p_form.add_argument("source", help="양식이 될 .hwpx")
+    p_form.add_argument("-o", "--out", help="꾸러미를 풀어 놓을 폴더")
+    p_form.add_argument("--name", default="", help="양식 이름(기본: 파일 이름)")
+    p_form.add_argument("--pack", metavar="PATH",
+                        help="꾸러미를 .skill 한 파일로 묶어 저장")
+    p_form.add_argument("--bullets", default="auto",
+                        choices=["auto", "hangul", "text"],
+                        help="줄머리 기호를 누가 붙이나 "
+                             "(auto=양식대로, hangul=한글에 맡김, text=도구가 적음)")
+    p_form.add_argument("--report-only", action="store_true",
+                        help="해부 결과만 보고 만들지 않음")
+
+    p_read = sub.add_parser(
+        "readback", help="서식 없는 hwpx → 마커 텍스트(양식에 맞춰 다시 만들 준비)")
+    p_read.add_argument("source", help="읽어 들일 .hwpx")
+    p_read.add_argument("-o", "--out", help="저장할 마커 텍스트")
+    p_read.add_argument("--form", help="대상 양식의 form.json(마커를 맞춰 준다)")
+    p_read.add_argument("--report", help="추정 근거를 저장할 경로")
+
     p_exp = sub.add_parser("export-skill", help="프로파일 → 스킬 폴더")
     p_exp.add_argument("profile")
     p_exp.add_argument("-o", "--out", default="./my-skill")
@@ -281,6 +419,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if cmd == "diagram":
             return run_diagram(args.text, args.out, args.profile, args.dtype,
                                args.title, args.render)
+        if cmd == "capture":
+            return run_capture(args.source, args.out, args.kind, args.title,
+                               args.hwpx, args.profile)
+        if cmd == "formkit":
+            return run_formkit(args.source, args.out, args.name, args.pack,
+                               args.report_only, args.bullets)
+        if cmd == "readback":
+            return run_readback(args.source, args.out, args.form, args.report)
         if cmd == "export-skill":
             return run_export_skill(args.profile, args.out, args.slug, args.standalone)
     except FileNotFoundError as exc:

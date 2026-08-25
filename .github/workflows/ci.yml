@@ -52,8 +52,33 @@ jobs:
           mkdir -p out
           hwpx-studio build examples/input_outline.md   -p policy-default -o out/개조식_예제.hwpx --preview out/개조식_예제.html
           hwpx-studio build examples/input_narrative.md -p narrative      -o out/서술식_예제.hwpx
-          hwpx-studio build examples/input_diagram.md   -p policy-default -o out/도식_예제.hwpx --no-lint
+          hwpx-studio build examples/input_footnote.md  -p policy-default -o out/각주_예제.hwpx
+          hwpx-studio build examples/input_diagram.md        -p policy-default -o out/도식_예제.hwpx --no-lint
+          hwpx-studio build examples/input_diagram_styled.md -p policy-default -o out/도식_색지정_예제.hwpx --no-lint
+          hwpx-studio build examples/input_diagram_side.md   -p policy-default -o out/도식_세로목록형_예제.hwpx --no-lint
+          hwpx-studio build examples/input_strategy.md       -p policy-default -o out/전략체계도_예제.hwpx --no-lint
           hwpx-studio diagram "대표 > 기획부, 운영부, 연구부" -o out/조직도.hwpx --title "조직 체계"
+      - name: 양식 꾸러미 만들기·되돌리기 (양식 보존 왕복)
+        run: |
+          # 만든 문서를 양식 삼아 꾸러미를 만들고, 그 꾸러미로 다시 만들어 본다.
+          hwpx-studio formkit out/개조식_예제.hwpx -o out/양식꾸러미 --name "예제양식"
+          hwpx-studio formkit out/개조식_예제.hwpx --pack out/예제양식.skill
+          python out/양식꾸러미/build_form.py out/양식꾸러미/예시.md -o out/양식보존_예제.hwpx
+          python out/양식꾸러미/read_hwpx.py out/개조식_예제.hwpx \
+            -o out/되돌린_원고.md --report out/되돌리기_근거.md
+          python - <<'CHECK'
+          import zipfile
+          a = zipfile.ZipFile("out/개조식_예제.hwpx")
+          b = zipfile.ZipFile("out/양식보존_예제.hwpx")
+          same = a.read("Contents/header.xml") == b.read("Contents/header.xml")
+          print("양식의 header.xml 보존:", same)
+          raise SystemExit(0 if same else 1)
+          CHECK
+      - name: 도식 가져오기(capture) 예제
+        run: |
+          hwpx-studio capture examples/capture/org.mmd     --title "위원회 구성" --hwpx out/가져온_조직도_mermaid.hwpx -o out/가져온_조직도.txt
+          hwpx-studio capture examples/capture/org.svg     --title "위원회 구성" --hwpx out/가져온_조직도_svg.hwpx
+          hwpx-studio capture examples/capture/process.mmd --title "처리 절차"   --hwpx out/가져온_절차도.hwpx
       - name: 생성 결과 요약
         run: |
           {

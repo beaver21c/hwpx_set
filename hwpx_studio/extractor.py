@@ -453,9 +453,11 @@ def extract_profile(source: Any, name: str = "추출 프로파일",
     if table_styles:
         profile["table"] = table_styles
 
-    if any(_has_auto_numbering(parts[s]) for s in section_names):
-        notes.append("한글 번호매기기/글머리표 기능(hh:heading)이 쓰인 문단이 있음 "
-                     "→ 해당 레벨의 prefix는 UNKNOWN_AUTO로 표기")
+    # hh:heading은 header.xml의 paraPr 안에 있다(section이 아니다)
+    if _has_auto_numbering(header_xml):
+        notes.append("한글 번호매기기·글머리표(hh:heading)를 쓰는 양식이다. "
+                     "프로파일 방식은 이 기능을 옮기지 못한다 → 서식을 그대로 지키려면 "
+                     "`hwpx-studio formkit`으로 양식 보존 꾸러미를 만들 것")
 
     result_profile = merge_profile(profile)
     report = build_report(clusters, result_profile, notes,
@@ -463,8 +465,9 @@ def extract_profile(source: Any, name: str = "추출 프로파일",
     return ExtractResult(profile=profile, report=report, clusters=clusters, notes=notes)
 
 
-def _has_auto_numbering(section_xml: str) -> bool:
-    return bool(re.search(r'<hh:heading[^>]*type="(NUMBER|BULLET)"', section_xml))
+def _has_auto_numbering(header_xml: str) -> bool:
+    """한글이 기호·번호를 자동으로 붙이는 양식인가. 정의는 header.xml에 있다."""
+    return bool(re.search(r'<hh:heading[^>]*type="(NUMBER|BULLET)"', header_xml))
 
 
 def _table_styles(cell_recs, chars, paras, faces, cluster_key, grouped

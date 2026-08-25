@@ -22,7 +22,10 @@ sys.path.insert(0, str(ROOT))
 
 from hwpx.templates import blank_document_bytes  # noqa: E402
 
+from hwpx_studio.export_form import BUILDER, READER, TEMPLATES  # noqa: E402
+
 TARGET = ROOT / "docs" / "assets.js"
+ASSET_DIR = ROOT / "hwpx_studio" / "assets"
 PROFILE_DIR = ROOT / "hwpx_studio" / "profiles"
 ORDER = ["policy-default", "gov-3level", "narrative"]
 
@@ -33,6 +36,8 @@ HEADER = """/**
  * 담고 있는 것
  *  - HWPX_TEMPLATE_B64: python-hwpx의 빈 문서 템플릿(base64)
  *  - HWPX_PROFILES:     hwpx_studio/profiles/*.json 사본
+ *  - FORM_SCRIPTS:      양식 꾸러미에 넣을 파이썬 도구(빌더·되돌리기)
+ *  - FORM_TEMPLATES:    꾸러미 안내문 틀(README·SKILL·AGENTS)
  */
 """
 
@@ -49,10 +54,19 @@ def build() -> str:
     lines.append(f'export const HWPX_TEMPLATE_B64 = "{template}";\n')
     lines.append("export const HWPX_PROFILES = "
                  + json.dumps(profiles, ensure_ascii=False, indent=2) + ";\n")
+
+    scripts = {name: (ASSET_DIR / name).read_text(encoding="utf-8")
+               for name in (BUILDER, READER)}
+    lines.append("export const FORM_SCRIPTS = "
+                 + json.dumps(scripts, ensure_ascii=False, indent=2) + ";\n")
+    lines.append("export const FORM_TEMPLATES = "
+                 + json.dumps(TEMPLATES, ensure_ascii=False, indent=2) + ";\n")
     lines.append("""
 if (typeof window !== 'undefined') {
   window.HWPX_TEMPLATE_B64 = HWPX_TEMPLATE_B64;
   window.HWPX_PROFILES = HWPX_PROFILES;
+  window.FORM_SCRIPTS = FORM_SCRIPTS;
+  window.FORM_TEMPLATES = FORM_TEMPLATES;
 }
 """)
     return "\n".join(lines)

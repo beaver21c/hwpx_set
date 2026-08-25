@@ -41,3 +41,43 @@ def test_strict_blocks_on_warnings(policy):
     issues = lint_items(r.items, policy, r.line_of)
     assert has_blocking(issues, strict=True)
     assert not has_blocking(issues, strict=False)
+
+
+def test_head_pattern_flags_a_missing_prefix(policy):
+    """네모의 【】, 원의 () 처럼 정해 둔 머릿글이 빠지면 알린다."""
+    from hwpx_studio.lint import lint_items
+    from hwpx_studio.parser import parse_text
+
+    profile = dict(policy)
+    profile["rules"] = dict(policy["rules"],
+                            head_pattern={"L1": r"^【[^】]+】", "L2": r"^\([^)]+\)"})
+    text = ("# 서론\n## 배경\n□ 【배경 1】 정책 수요 변화\n○ (1) 고령화 심화\n"
+            "- 가\n- 나\n○ 머릿글 없는 원\n- 다\n- 라\n□ 머릿글 없는 네모\n"
+            "○ (1) 가\n- 마\n- 바\n○ (2) 나\n- 사\n- 아\n")
+    parsed = parse_text(text, profile)
+    heads = [i for i in lint_items(parsed.items, profile, parsed.line_of, parsed.warnings)
+             if i.code == "head"]
+    assert len(heads) == 2
+    assert "머릿글 없는 원" in heads[0].message or "머릿글 없는 네모" in heads[0].message
+
+
+def test_head_pattern_is_off_by_default(policy):
+    from hwpx_studio.lint import lint_items
+    from hwpx_studio.parser import parse_text
+
+    parsed = parse_text("# 서론\n## 배경\n□ 머릿글 없음\n○ 이것도\n- 가\n- 나\n"
+                        "○ 저것도\n- 다\n- 라\n□ 또\n○ 가\n- 마\n- 바\n○ 나\n- 사\n- 아\n",
+                        policy)
+    issues = lint_items(parsed.items, policy, parsed.line_of, parsed.warnings)
+    assert not [i for i in issues if i.code == "head"]
+
+
+def test_bad_head_pattern_is_reported_as_a_profile_error(policy):
+    from hwpx_studio.profile import validate_profile
+
+    profile = dict(policy)
+    profile["rules"] = dict(policy["rules"], head_pattern={"L1": "["})
+    assert any("head_pattern" in e for e in validate_profile(profile))
+
+    profile["rules"] = dict(policy["rules"], head_pattern={"없는레벨": "^x"})
+    assert any("없는레벨" in e for e in validate_profile(profile))

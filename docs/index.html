@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>hwpx-studio — 마커 텍스트로 한글 문서 만들기</title>
-<meta name="description" content="설치 없이 브라우저에서 마커 텍스트를 한글 문서(.hwpx)로 만듭니다. 파일은 기기 밖으로 나가지 않습니다.">
+<title>hwpx-studio — 한글 문서를 만드는 네 가지 길</title>
+<meta name="description" content="설치 없이 브라우저에서. 쓰던 한글 양식을 올리면 그 양식 전용 도구 꾸러미가 나오고, 마커 텍스트·도식을 한글 문서(.hwpx)로 바꿉니다. 파일은 기기 밖으로 나가지 않습니다.">
 <link rel="stylesheet" href="./css/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📄</text></svg>">
 </head>
@@ -12,63 +12,134 @@
 <header class="top">
   <div class="wrap">
     <h1>hwpx-studio</h1>
-    <p class="sub">마커를 붙인 평범한 텍스트를 <strong>한글 문서(.hwpx)</strong>로 바꿉니다.
-      브라우저 안에서만 처리되어 <strong>글이 서버로 전송되지 않습니다.</strong></p>
+    <p class="sub">한글 문서(.hwpx)를 만드는 도구 모음.
+      <strong>브라우저 안에서만 처리되어 파일이 서버로 전송되지 않습니다.</strong></p>
   </div>
 </header>
 
+<nav class="wrap lanes" aria-label="서비스 선택">
+  <button type="button" class="lane" data-lane="form" aria-pressed="true">
+    <span class="lane-no">1</span>
+    <span class="lane-name">양식으로 도구 만들기</span>
+    <span class="lane-why">쓰던 한글 양식을 올리면 그 양식 전용 꾸러미가 나옵니다.
+      Claude·GPT·codex에 넣어 쓰세요</span>
+  </button>
+  <button type="button" class="lane" data-lane="diagram" aria-pressed="false">
+    <span class="lane-no">2</span>
+    <span class="lane-name">도식을 한글 표로</span>
+    <span class="lane-why">조직도·절차도·전략체계도를 한글에서 편집 가능한 표로.
+      남의 도식을 읽어 오기도 합니다</span>
+  </button>
+  <button type="button" class="lane" data-lane="convert" aria-pressed="false">
+    <span class="lane-no">3</span>
+    <span class="lane-name">서식 없는 문서를 양식에 맞추기</span>
+    <span class="lane-why">AI가 뽑아낸 밋밋한 hwpx를 양식대로 다시 만들 준비를 해 줍니다</span>
+  </button>
+  <button type="button" class="lane" data-lane="write" aria-pressed="false">
+    <span class="lane-no">4</span>
+    <span class="lane-name">여기서 바로 쓰기</span>
+    <span class="lane-why">마커를 붙인 텍스트를 내장 서식으로 바로 한글 문서로</span>
+  </button>
+</nav>
+
 <main class="wrap">
-  <section class="panel">
-    <div class="panel-head">
-      <h2>본문</h2>
-      <div class="head-actions">
-        <button type="button" class="ghost" data-sample="outline">개조식 예시</button>
-        <button type="button" class="ghost" data-sample="diagram">도식 예시</button>
-        <button type="button" class="ghost" data-sample="narrative">서술식 예시</button>
+
+  <!-- ① 양식으로 도구 만들기 ------------------------------------------->
+  <div data-panel="form">
+    <section class="panel">
+      <h2>① 쓰던 한글 양식을 올리세요</h2>
+      <p class="hint">보고서틀·기안문·계획서 등 <strong>서식이 갖춰진 .hwpx</strong>를 올리면,
+        그 양식의 스타일 번호·표 골격·글머리표를 읽어
+        <strong>그 양식 전용 도구 꾸러미</strong>를 만들어 드립니다.
+        꾸러미를 Claude·GPT·codex에 통째로 주면, AI가 내용을 쓰고
+        <strong>그 자리에서 한글 파일까지</strong> 만듭니다.</p>
+      <div class="fields">
+        <label>양식 파일(.hwpx)
+          <input id="form-file" type="file" accept=".hwpx">
+        </label>
+        <label>양식 이름
+          <input id="form-name" type="text" placeholder="예: 정책보고서틀" spellcheck="false">
+        </label>
+        <label>줄머리 기호(□ ○ -)를 누가 붙이나
+          <select id="form-bullets">
+            <option value="auto">양식을 보고 정하기 (권장)</option>
+            <option value="hangul">한글에 맡기기 — 양식이 자동으로 붙임</option>
+            <option value="text">도구가 본문에 적어 넣기</option>
+          </select>
+        </label>
       </div>
-    </div>
-    <textarea id="body-text" spellcheck="false" placeholder="# 사업 추진 현황
-## 추진 개요
-□ 추진 배경 및 목적
-○ 제도 개선 요구가 지속 제기되어 개선 방안을 마련
-- 기존 절차의 처리 기간이 길어 이용자 불편이 누적"></textarea>
-    <p class="hint" id="stat">0줄</p>
-  </section>
+      <p class="hint">한글은 문단 스타일에 <strong>자동 글머리표</strong>를 걸어 둘 수 있습니다.
+        그런 양식이면 본문에 기호를 또 적으면 안 되고(두 번 찍힙니다), 그렇지 않은 양식이면
+        도구가 적어야 합니다. 기본값은 양식을 해부해 자동으로 가르고,
+        <strong>다르게 잡혔으면 여기서 고르면</strong> 됩니다.
+        고른 값이 양식과 어긋나면 해부 결과에 그 사실이 적힙니다.</p>
+      <div class="actions">
+        <button type="button" id="form-run" class="primary">해부해서 꾸러미 만들기</button>
+      </div>
+      <p class="status" id="form-status" role="status"></p>
+    </section>
 
-  <section class="panel">
-    <h2>설정</h2>
-    <div class="fields">
-      <label>서식
-        <select id="profile"></select>
-      </label>
-      <label>파일 이름
-        <input id="filename" type="text" value="보고서.hwpx" spellcheck="false">
-      </label>
-    </div>
-    <div class="actions">
-      <button type="button" id="build" class="primary">한글 파일 만들기</button>
-      <button type="button" id="check" class="ghost">검사만</button>
-    </div>
-    <p class="status" id="status" role="status"></p>
-  </section>
+    <section class="panel" id="form-result" hidden>
+      <div class="panel-head">
+        <h2>해부 결과</h2>
+        <div class="head-actions">
+          <button type="button" class="ghost" id="form-download">꾸러미 내려받기(.zip)</button>
+          <button type="button" class="ghost" id="form-download-skill">스킬로 내려받기(.skill)</button>
+        </div>
+      </div>
+      <p class="hint">아래가 이 양식에서 읽어 낸 것입니다. <strong>추정</strong>이므로 한 번 보고,
+        마커가 뜻과 다르면 꾸러미 안 <code>form.json</code>을 고치면 됩니다.</p>
+      <div id="form-report" class="report"></div>
+    </section>
 
-  <section class="panel" id="report-panel" hidden>
-    <h2>검사 결과</h2>
-    <ul class="issues" id="issues"></ul>
-  </section>
+    <section class="panel notes">
+      <h2>꾸러미에 무엇이 들어 있나</h2>
+      <ul>
+        <li><code>template.hwpx</code> — 올린 양식 원본. <strong>고치지 않습니다.</strong>
+          서식이 여기서 그대로 나옵니다</li>
+        <li><code>build_form.py</code> — 마커 텍스트 → 한글 문서.
+          <code>header.xml</code>을 한 바이트도 건드리지 않아 글꼴·자동 글머리표·
+          번호매기기·쪽 설정이 원본 그대로입니다</li>
+        <li><code>read_hwpx.py</code> — 서식 없는 문서를 마커 텍스트로 되돌리기</li>
+        <li><code>SKILL.md</code>(Claude) · <code>AGENTS.md</code>(codex·GPT) —
+          AI에게 주는 지시문</li>
+        <li><code>form.json</code> · <code>해부보고서.md</code> · <code>예시.md</code></li>
+      </ul>
+    </section>
+  </div>
 
-  <section class="panel">
-    <h2>줄머리 마커</h2>
-    <table class="cheat">
-      <thead><tr><th>입력</th><th>결과</th><th>쓰임</th></tr></thead>
-      <tbody id="marker-table"></tbody>
-    </table>
-    <details>
-      <summary>표·도식 쓰는 법</summary>
-      <p><strong>표</strong> — 앞뒤에 빈 줄을 두고 파이프로 씁니다. 첫 행이 머리행입니다.</p>
-      <pre>| 구분 | 목표 | 실적 |
-|---|---|---|
-| 처리 기간 | 14일 | 11일 |</pre>
+  <!-- ② 도식을 한글 표로 ---------------------------------------------->
+  <div data-panel="diagram" hidden>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>② 도식 가져오기</h2>
+        <div class="head-actions">
+          <button type="button" class="ghost" data-capture-sample="mermaid">Mermaid 예시</button>
+          <button type="button" class="ghost" data-capture-sample="svg">SVG 예시</button>
+        </div>
+      </div>
+      <p class="hint">다른 곳에 있는 조직도·절차도를 붙여 넣으면 본문에 넣을 도식 블록으로
+        바꿔 줍니다. <strong>Mermaid</strong>(위키·AI가 흔히 내놓는 형식), <strong>SVG</strong>,
+        그 둘이 든 <strong>HTML·마크다운</strong>을 읽습니다. 색과 점선은 원본에 적힌 값을 그대로 가져옵니다.</p>
+      <textarea id="capture-text" spellcheck="false" placeholder="flowchart TD
+    A[대표] --> B[기획부]
+    A --> C[운영부]
+    style A fill:#1F3864,color:#FFFFFF"></textarea>
+      <div class="fields">
+        <label>도식 제목
+          <input id="capture-title" type="text" placeholder="예: 추진 체계" spellcheck="false">
+        </label>
+      </div>
+      <div class="actions">
+        <button type="button" id="capture-run" class="primary">읽어서 본문에 넣기</button>
+      </div>
+      <p class="status" id="capture-status" role="status"></p>
+      <p class="hint">읽어 들인 블록은 <strong>④ 여기서 바로 쓰기</strong>의 본문 칸 끝에 붙습니다.
+        거기서 문서를 만들거나, 그 블록을 그대로 복사해 ①의 꾸러미에 넣어 쓰세요.</p>
+    </section>
+
+    <section class="panel">
+      <h2>손으로 쓰는 도식 문법</h2>
       <p><strong>조직도·체계도</strong> — 2칸 들여쓰기가 한 단계 아래입니다.</p>
       <pre>:::diagram type=org title="추진 체계"
 대표
@@ -80,25 +151,166 @@
 접수 → 검토 → 심의 → 통보
 :::</pre>
       <p><strong>매트릭스</strong> — <code>type=matrix</code>에 표를 그대로 씁니다.</p>
-    </details>
-  </section>
+      <p><strong>전략체계도</strong> — 왼쪽 단 이름, 오른쪽 칸들. 라벨 없이 <code>|</code>로
+         시작한 줄은 위 단의 다음 줄입니다.</p>
+      <pre>:::diagram type=strategy
+미션 | 국민의 삶의 질 향상에 기여한다
+핵심가치 | 공감 | 안전 | 공정 | 신뢰
+4대 전략방향 | 분쟁해결 | 안전환경 | 거래환경 | 혁신경영
+| 세부과제1 | 세부과제2 | 세부과제3 | 세부과제4
+:::</pre>
+      <p><strong>상자 색</strong> — 이름 뒤에 <code>{ }</code>로 적습니다.
+         상자가 많으면(8개 이상) 세로 목록형으로 자동 전환됩니다.</p>
+      <pre>:::diagram type=org
+대표 {fill=#C00000 color=#FFFFFF}
+  기획부 {fill=#2E75B6 color=#FFFFFF}
+  감사실 {link=dash}
+:::</pre>
+    </section>
 
-  <section class="panel notes">
-    <h2>알아둘 점</h2>
-    <ul>
-      <li>번호(Ⅰ. 1.)는 도구가 붙입니다. 본문에 직접 쓰지 마세요.</li>
-      <li>마커 뒤에는 <strong>공백 한 칸</strong>. 그래서 <code>-3% 감소</code>는 마커로 오인되지 않습니다.</li>
-      <li>글꼴은 문서에 이름만 기록됩니다. 그 글꼴이 없는 PC에서는 다른 글꼴로 보입니다.</li>
-      <li>그림 삽입과 이미지 도식은 웹에서 지원하지 않습니다(표로 대체). 필요하면 파이썬판을 쓰세요.</li>
-      <li>작성 중인 글은 이 브라우저에만 저장됩니다.</li>
-    </ul>
-  </section>
+    <section class="panel notes">
+      <h2>알아둘 점</h2>
+      <ul>
+        <li>그림(PNG·스캔)은 읽지 못합니다. 구조가 글자로 남아 있는 것만 읽습니다.</li>
+        <li>그림뿐인 도식은 AI에게 보여 주고 위 문법으로 받아쓰게 한 뒤 눈으로 맞춰 보세요.</li>
+        <li>표로 애초에 안 되는 것: 둥근 모서리, 곡선, 화살촉, 그림자.</li>
+      </ul>
+    </section>
+  </div>
+
+  <!-- ③ 서식 없는 문서를 양식에 맞추기 --------------------------------->
+  <div data-panel="convert" hidden>
+    <section class="panel">
+      <h2>③ 밋밋한 한글 파일을 양식에 맞추기</h2>
+      <p class="hint">AI가 뽑아냈거나 손으로 대충 쓴 <strong>서식 없는 .hwpx</strong>를
+        올리면, 내용을 <strong>마커 텍스트로 되돌려</strong> 줍니다.
+        양식 파일까지 같이 올리면 그 양식의 마커로 맞춰 주고, 되돌린 원고가 든
+        <strong>꾸러미</strong>를 통째로 내려받을 수 있습니다.
+        꾸러미를 AI에 주면 원고를 다듬어 그 양식대로 한글 파일을 만듭니다.</p>
+      <div class="fields">
+        <label>내용이 든 파일(.hwpx)
+          <input id="convert-file" type="file" accept=".hwpx">
+        </label>
+        <label>맞출 양식(.hwpx) — 없으면 기호를 그대로 둡니다
+          <input id="convert-form" type="file" accept=".hwpx">
+        </label>
+      </div>
+      <div class="actions">
+        <button type="button" id="convert-run" class="primary">읽어서 원고로 되돌리기</button>
+      </div>
+      <p class="status" id="convert-status" role="status"></p>
+    </section>
+
+    <section class="panel" id="convert-result" hidden>
+      <div class="panel-head">
+        <h2>되돌린 원고</h2>
+        <div class="head-actions">
+          <button type="button" class="ghost" id="convert-copy">본문 칸에 넣기</button>
+          <button type="button" class="ghost" id="convert-download">원고만 내려받기(.md)</button>
+          <button type="button" class="ghost" id="convert-bundle" hidden>꾸러미로 내려받기(.zip)</button>
+        </div>
+      </div>
+      <textarea id="convert-text" spellcheck="false" readonly></textarea>
+      <p class="hint">단계를 어떻게 갈랐는지는 아래 근거를 보세요. <strong>추정입니다.</strong>
+        틀렸으면 마커를 손으로 고치면 됩니다.</p>
+      <div id="convert-report" class="report"></div>
+    </section>
+  </div>
+
+  <!-- ④ 여기서 바로 쓰기 ----------------------------------------------->
+  <div data-panel="write" hidden>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>④ 본문</h2>
+        <div class="head-actions">
+          <button type="button" class="ghost" data-sample="outline">개조식 예시</button>
+          <button type="button" class="ghost" data-sample="diagram">도식 예시</button>
+          <button type="button" class="ghost" data-sample="narrative">서술식 예시</button>
+        </div>
+      </div>
+      <textarea id="body-text" spellcheck="false" placeholder="# 사업 추진 현황
+## 추진 개요
+□ 추진 배경 및 목적
+○ 제도 개선 요구가 지속 제기되어 개선 방안을 마련
+- 기존 절차의 처리 기간이 길어 이용자 불편이 누적"></textarea>
+      <p class="hint" id="stat">0줄</p>
+    </section>
+
+    <section class="panel">
+      <h2>설정</h2>
+      <div class="fields">
+        <label>서식
+          <select id="profile"></select>
+        </label>
+        <label>파일 이름
+          <input id="filename" type="text" value="보고서.hwpx" spellcheck="false">
+        </label>
+      </div>
+      <div class="actions">
+        <button type="button" id="build" class="primary">한글 파일 만들기</button>
+        <button type="button" id="check" class="ghost">검사만</button>
+      </div>
+      <p class="status" id="status" role="status"></p>
+      <p class="hint">여기 서식은 이 도구에 들어 있는 것입니다. 기관 양식 그대로가 필요하면
+        <strong>① 양식으로 도구 만들기</strong>를 쓰세요.</p>
+    </section>
+
+    <section class="panel" id="report-panel" hidden>
+      <h2>검사 결과</h2>
+      <ul class="issues" id="issues"></ul>
+    </section>
+
+    <section class="panel">
+      <h2>줄머리 마커</h2>
+      <table class="cheat">
+        <thead><tr><th>입력</th><th>결과</th><th>쓰임</th></tr></thead>
+        <tbody id="marker-table"></tbody>
+      </table>
+      <details>
+        <summary>각주 쓰는 법</summary>
+        <p>근거가 되는 <strong>말 바로 뒤에 붙여</strong> <code>[^1]</code>을 적고,
+           내용은 아무 데나 <code>[^1]: …</code> 줄로 적습니다.
+           번호는 한글이 문서 순서대로 매기므로 라벨은 이름표일 뿐입니다.
+           각주 글씨는 <strong>8pt 회색</strong>입니다.</p>
+        <pre>□ 노인 빈곤율은 40.4%로 가장 높다[^1]
+
+[^1]: 통계청(2024), 「가계금융복지조사」.</pre>
+        <p><strong>번호 자리</strong> — 앞말에 붙여 쓰고(빈칸 없이),
+           문장 전체의 근거면 <strong>마침표 앞</strong>(<code>…한다[^1].</code>)에 답니다.
+           인용문 자체가 각주 대상이면 닫는 <strong>따옴표 안</strong>
+           (<code>"…이다[^2]"라고</code>), 인용을 쓴 문장 쪽의 근거이면 따옴표 밖입니다.
+           제목·표 안·도식 상자 안에는 달지 않습니다.
+           어긋나면 [검사]가 알려 줍니다(따옴표 안팎은 글쓴이만 아는 구분이라 검사하지 않습니다).</p>
+      </details>
+      <details>
+        <summary>표 쓰는 법</summary>
+        <p>앞뒤에 빈 줄을 두고 파이프로 씁니다. 첫 행이 머리행입니다.</p>
+        <pre>| 구분 | 목표 | 실적 |
+|---|---|---|
+| 처리 기간 | 14일 | 11일 |</pre>
+      </details>
+    </section>
+
+    <section class="panel notes">
+      <h2>알아둘 점</h2>
+      <ul>
+        <li>번호(Ⅰ. 1.)는 도구가 붙입니다. 본문에 직접 쓰지 마세요.</li>
+        <li>마커 뒤에는 <strong>공백 한 칸</strong>. 그래서 <code>-3% 감소</code>는 마커로 오인되지 않습니다.</li>
+        <li>글꼴은 문서에 이름만 기록됩니다. 그 글꼴이 없는 PC에서는 다른 글꼴로 보입니다.</li>
+        <li>그림 삽입과 이미지 도식은 웹에서 지원하지 않습니다(표로 대체). 필요하면 파이썬판을 쓰세요.</li>
+        <li>작성 중인 글은 이 브라우저에만 저장됩니다.</li>
+      </ul>
+    </section>
+  </div>
 </main>
 
 <footer class="wrap foot">
   <p><a href="https://github.com/beaver21c/hwpx_set">GitHub 저장소</a> ·
+     <a href="https://github.com/beaver21c/hwpx_set/blob/main/docs/form-guide.md">양식 꾸러미 안내</a> ·
      <a href="https://github.com/beaver21c/hwpx_set/blob/main/docs/writing-guide.md">본문 작성법</a> ·
      <a href="https://github.com/beaver21c/hwpx_set/blob/main/docs/diagram-guide.md">도식 작성법</a></p>
+  <p>만든 문서의 최종 모양은 <strong>한글에서 열어야</strong> 확인됩니다.
+     줄바꿈·쪽 나눔·표 높이는 한글이 열 때 다시 계산합니다.</p>
 </footer>
 
 <script type="module" src="./js/app.js"></script>

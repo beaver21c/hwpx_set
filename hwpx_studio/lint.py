@@ -1,4 +1,4 @@
-"""본문 규칙 검사(계층 균형·기호 중복·온점·블록 앞뒤 빈 줄)."""
+"""본문 규칙 검사(계층 균형·기호 중복·온점·각주 번호 자리·블록 앞뒤 빈 줄)."""
 
 from __future__ import annotations
 
@@ -43,9 +43,12 @@ def lint_items(items: Sequence[Dict[str, Any]], profile: Dict[str, Any],
                  if str(lv.get("prefix", "")).startswith("AUTO_")}
     rules = profile.get("rules", {})
     min_children = rules.get("min_children") or {}
+    head_patterns = {k: v for k, v in (rules.get("head_pattern") or {}).items() if v}
     policy = rules.get("period_policy", "single_sentence_no_period")
+    position = rules.get("footnote_position", "before_period")
 
     issues: List[Issue] = []
+    note_no = 0
     for text in parser_warnings:
         m = re.match(r"(\d+)행: (.*)", text)
         if m:
@@ -75,9 +78,21 @@ def lint_items(items: Sequence[Dict[str, Any]], profile: Dict[str, Any],
                 "warn", line, "symbol",
                 f"본문에 레벨 기호 {stray!r}가 들어 있음 → 마커와 혼동 가능"))
 
+        # 머릿글 규칙(네모의 【】, 원의 () 처럼 레벨마다 정해 둔 앞머리)
+        pattern = head_patterns.get(key)
+        if pattern and not re.match(pattern, text):
+            issues.append(Issue(
+                "warn", line, "head",
+                f"{key}에 머릿글이 없음(규칙 {pattern}): {text[:20]}"))
+
         # 온점 규칙(제목 레벨은 제외)
         if key not in auto_keys:
             issues += _period_issues(text, line, policy)
+
+        # 각주 번호 자리
+        for note in item.get("notes") or []:
+            note_no += 1
+            issues += _footnote_issues(note, note_no, line, key in auto_keys, position)
 
         # 계층 균형
         need = min_children.get(key)
@@ -116,6 +131,40 @@ def _count_children(paras, pos: int, depth: Optional[int], depth_of) -> int:
         if child_depth == depth + 1:
             count += 1
     return count
+
+
+_SENTENCE_END = ".。!?"
+
+
+def _footnote_issues(note: Dict[str, Any], number: int, line: int,
+                     in_heading: bool, position: str) -> List[Issue]:
+    """각주 번호를 놓은 자리를 본다. 본문 규칙이지 서식 문제가 아니다."""
+    out: List[Issue] = []
+    label = str(note.get("label", ""))
+    before = str(note.get("before", ""))
+    after = str(note.get("after", ""))
+    where = f"각주 {number}"
+
+    if in_heading:
+        out.append(Issue("warn", line, "footnote",
+                         f"{where}: 제목에 각주를 닮 → 본문 문단으로 옮길 것"))
+    if not before:
+        out.append(Issue("warn", line, "footnote",
+                         f"{where}: 문단 맨 앞에 번호가 옴 → 근거가 되는 말 뒤에 붙일 것"))
+    elif before.isspace():
+        out.append(Issue("warn", line, "footnote",
+                         f"{where}: 번호 앞에 빈칸이 있음 → 앞말에 붙여 쓸 것"))
+    if position == "before_period" and before and before in _SENTENCE_END:
+        out.append(Issue("warn", line, "footnote",
+                         f"{where}: 마침표 뒤에 번호가 옴 → 마침표 앞에 붙일 것"))
+    elif position == "after_period" and after and after in _SENTENCE_END:
+        out.append(Issue("warn", line, "footnote",
+                         f"{where}: 마침표 앞에 번호가 옴 → 마침표 뒤에 붙일 것"))
+    if label.isdigit() and int(label) != number:
+        out.append(Issue("warn", line, "footnote",
+                         f"[^{label}]로 적었지만 문서 순서로는 {number}번째 각주 "
+                         f"→ 번호는 한글이 매기므로 라벨과 다를 수 있음"))
+    return out
 
 
 def _period_issues(text: str, line: int, policy: str) -> List[Issue]:

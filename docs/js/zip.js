@@ -72,6 +72,9 @@ export async function unzip(buffer) {
  * Map<파일명, Uint8Array|string> → ZIP 바이트.
  * `stored`에 든 이름은 압축하지 않는다(hwpx의 mimetype은 반드시 무압축·첫 항목).
  */
+//: 일반 목적 비트 11. 켜지 않으면 한글 파일 이름이 CP437로 읽혀 깨진다.
+const UTF8_NAMES = 0x0800;
+
 export async function zip(files, stored = ['mimetype']) {
   const encoder = new TextEncoder();
   const locals = [];
@@ -90,7 +93,7 @@ export async function zip(files, stored = ['mimetype']) {
     const lv = new DataView(local.buffer);
     lv.setUint32(0, 0x04034b50, true);
     lv.setUint16(4, 20, true);            // version needed
-    lv.setUint16(6, 0, true);             // flags
+    lv.setUint16(6, UTF8_NAMES, true);    // flags — 파일 이름이 UTF-8임을 알린다
     lv.setUint16(8, method, true);
     lv.setUint16(10, 0, true);            // time
     lv.setUint16(12, 0x21, true);         // date (1996-01-01)
@@ -106,7 +109,7 @@ export async function zip(files, stored = ['mimetype']) {
     dv.setUint32(0, 0x02014b50, true);
     dv.setUint16(4, 20, true);            // version made by
     dv.setUint16(6, 20, true);            // version needed
-    dv.setUint16(8, 0, true);
+    dv.setUint16(8, UTF8_NAMES, true);
     dv.setUint16(10, method, true);
     dv.setUint16(12, 0, true);
     dv.setUint16(14, 0x21, true);

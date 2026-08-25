@@ -157,3 +157,49 @@ def test_extract_script_rejects_binary_hwp(tmp_path, monkeypatch):
     monkeypatch.setenv("OUT_DIR", str(tmp_path / "out"))
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
     assert extract.main() == 1
+
+
+def test_capture_script_writes_block_and_document(tmp_path, monkeypatch, repo_root):
+    cap = load("run_capture")
+    monkeypatch.chdir(repo_root)
+    monkeypatch.setenv("SOURCE_PATH", "examples/capture/org.svg")
+    monkeypatch.setenv("TITLE", "위원회 구성")
+    monkeypatch.setenv("KIND", "auto")
+    monkeypatch.setenv("PROFILE", "policy-default")
+    monkeypatch.setenv("OUTPUT_NAME", "조직도")          # 확장자 없이 줘도 된다
+    monkeypatch.setenv("OUT_DIR", str(tmp_path / "out"))
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+
+    assert cap.main() == 0
+    block = (tmp_path / "out" / "도식블록.txt").read_text(encoding="utf-8")
+    assert 'type=org title="위원회 구성"' in block
+    assert "fill=#C00000" in block
+    assert (tmp_path / "out" / "조직도.hwpx").exists()
+
+
+def test_capture_script_reports_missing_and_unreadable(tmp_path, monkeypatch):
+    cap = load("run_capture")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OUT_DIR", str(tmp_path / "out"))
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+
+    monkeypatch.setenv("SOURCE_PATH", "없는파일.mmd")
+    assert cap.main() == 2
+
+    junk = tmp_path / "junk.mmd"
+    junk.write_text("도식이 아닌 그냥 문장", encoding="utf-8")
+    monkeypatch.setenv("SOURCE_PATH", str(junk))
+    assert cap.main() == 2
+
+
+def test_capture_script_strips_path_from_output_name(tmp_path, monkeypatch, repo_root):
+    cap = load("run_capture")
+    monkeypatch.chdir(repo_root)
+    monkeypatch.setenv("SOURCE_PATH", "examples/capture/org.mmd")
+    monkeypatch.setenv("OUTPUT_NAME", "../../탈출.hwpx")
+    monkeypatch.setenv("OUT_DIR", str(tmp_path / "out"))
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    monkeypatch.delenv("TITLE", raising=False)
+    monkeypatch.delenv("KIND", raising=False)
+    assert cap.main() == 0
+    assert (tmp_path / "out" / "탈출.hwpx").exists()

@@ -75,7 +75,7 @@ def test_style_attributes_match(legacy_document, tmp_path, repo_root):
     from hwpx_studio.profile import load_profile
 
     legacy_path, _ = legacy_document
-    profile = load_profile(str(repo_root / "profiles" / "policy-default.json"))
+    profile = load_profile("policy-default")   # 내장 프로파일(hwpx_studio/profiles/)
     parsed = parse_file(str(repo_root / "tests" / "fixtures" / "legacy_contents.md"),
                         profile)
     studio_path = tmp_path / "studio.hwpx"
@@ -94,7 +94,7 @@ def test_body_text_matches(legacy_document, tmp_path, repo_root):
     from hwpx_studio.profile import load_profile
 
     legacy_path, module = legacy_document
-    profile = load_profile(str(repo_root / "profiles" / "policy-default.json"))
+    profile = load_profile("policy-default")   # 내장 프로파일(hwpx_studio/profiles/)
     parsed = parse_file(str(repo_root / "tests" / "fixtures" / "legacy_contents.md"),
                         profile)
     studio_path = tmp_path / "studio.hwpx"

@@ -64,8 +64,8 @@ def test_variable_level_count_builds(policy):
     data = build_document(trimmed, [("title", "장"), (1, "주제")]).data
     assert len(data) > 0
     header = read_part(data, "Contents/header.xml")
-    # 바탕글 + 레벨 3 + 표 3 + 본문 = 8
-    assert re.search(r'<hh:styles itemCnt="8"', header)
+    # 바탕글 + 레벨 3 + 표 3 + 본문 + 각주 = 9
+    assert re.search(r'<hh:styles itemCnt="9"', header)
 
 
 def test_signature_is_off_by_default(policy):
