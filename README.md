@@ -3,7 +3,7 @@
 한국어 보고서를 **한글 문서(.hwpx)** 로 만드는 도구 모음. 한글 프로그램 없이 돈다.
 본문은 마커가 붙은 평범한 텍스트라서 어떤 AI로도, 사람이 직접이라도 쓸 수 있다.
 
-[웹 앱](https://beaver21c.github.io/hwpx_set/)에 네 갈래가 있고, 버려진 기능은 없다.
+웹 앱에 네 갈래가 있고, 버려진 기능은 없다([여는 법](#웹-앱을-여는-법)).
 
 | | 무엇 | 언제 |
 |---|---|---|
@@ -11,6 +11,27 @@
 | ② | **도식을 한글 표로** — 조직도·절차도·전략체계도를 편집 가능한 표로 | 도식을 옮길 때 |
 | ③ | **서식 없는 문서를 양식에 맞추기** — 밋밋한 hwpx를 마커 원고로 되돌린다 | AI가 뽑아낸 파일을 다듬을 때 |
 | ④ | **여기서 바로 쓰기** — 마커 텍스트를 내장 서식으로 바로 문서로 | 양식을 안 가릴 때 |
+
+## 웹 앱을 여는 법
+
+설치 없이 브라우저에서 돈다. 파일은 기기 밖으로 나가지 않는다.
+
+| 방법 | 주소 | 준비 |
+|---|---|---|
+| **GitHub Pages** | `https://beaver21c.github.io/hwpx_set/` | 저장소 소유자가 **한 번** 켜야 한다(아래) |
+| **단일 HTML 파일** | Actions → 아무 CI 실행 → `웹앱-단일파일` 아티팩트 | 없음. 내려받아 더블클릭 |
+| 직접 만들기 | `python tools/build_standalone.py` → `dist/hwpx-studio.html` | 파이썬 |
+
+### GitHub Pages 켜기 (한 번, 1분)
+
+지금은 **꺼져 있다.** 워크플로 토큰으로는 켤 수 없어서 배포가 계속 실패하고 있다.
+
+1. [Settings → Pages](https://github.com/beaver21c/hwpx_set/settings/pages)
+2. *Build and deployment* → **Source**를 `GitHub Actions`로
+3. [Actions → 웹 앱 배포](https://github.com/beaver21c/hwpx_set/actions/workflows/pages.yml)
+   → **Run workflow** (브랜치를 골라 병합 전에도 올릴 수 있다)
+
+켜고 나면 `main`에 밀 때마다 저절로 배포된다.
 
 ### ① 양식 보존이 무엇이 다른가
 
@@ -116,10 +137,7 @@ from google.colab import files; files.download('보고서.hwpx')
 파이썬도 GitHub 계정도 필요 없다. 페이지를 열어 본문을 붙여 넣고 버튼을 누르면
 `.hwpx` 파일이 바로 내려받아진다.
 
-- **웹 페이지**: `main`에 올라가면 GitHub Pages로 자동 배포된다. 주소는
-  `https://<사용자>.github.io/<저장소>/`
-  단, **최초 1회** 저장소 Settings → Pages → Source를 `GitHub Actions`로 바꿔야 한다
-  (워크플로 토큰으로는 Pages를 켤 수 없다)
+- **웹 페이지**: GitHub Pages. 켜는 법은 위 [웹 앱을 여는 법](#웹-앱을-여는-법)
 - **단일 파일**: `python tools/build_standalone.py` → `dist/hwpx-studio.html` 한 개.
   이메일로 보내거나 USB에 넣어 두고 인터넷 없이 열어도 그대로 동작한다
   (CI의 `웹앱-단일파일` 아티팩트로도 받을 수 있다)
