@@ -251,6 +251,32 @@ def run_export_skill(profile_arg: str, out_dir: str, slug: str = "hwpx-report",
     return 0
 
 
+def run_formkit(source: str, out: Optional[str], name: str,
+                pack: Optional[str], report_only: bool) -> int:
+    """양식 hwpx를 해부해 그 양식 전용 꾸러미를 만든다."""
+    from .export_form import build_bundle, pack_bundle, write_bundle
+
+    files, result = build_bundle(source, name=name)
+    _echo(result.report)
+    if report_only:
+        return 0
+    if not out and not pack:
+        _echo("만들 곳을 지정할 것: -o 폴더 또는 --pack 파일.skill")
+        return 2
+
+    root = result.form["name"]
+    if out:
+        path = write_bundle(files, Path(out))
+        _echo(f"꾸러미 저장 → {path} ({len(files)}개 파일)")
+    if pack:
+        data = pack_bundle(files, root)
+        Path(pack).write_bytes(data)
+        _echo(f"꾸러미 묶음 저장 → {pack} ({len(data):,}바이트)")
+    if result.notes:
+        _echo("살펴볼 것: " + " / ".join(result.notes))
+    return 0
+
+
 # ──────────────────────────────────────────────────────────────
 # 진입점
 # ──────────────────────────────────────────────────────────────
@@ -311,6 +337,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_cap.add_argument("--hwpx", help="읽은 도식을 곧바로 hwpx로도 생성")
     p_cap.add_argument("-p", "--profile")
 
+    p_form = sub.add_parser(
+        "formkit", help="양식 hwpx → 그 양식 전용 꾸러미(빌더·스킬·codex 지시문)")
+    p_form.add_argument("source", help="양식이 될 .hwpx")
+    p_form.add_argument("-o", "--out", help="꾸러미를 풀어 놓을 폴더")
+    p_form.add_argument("--name", default="", help="양식 이름(기본: 파일 이름)")
+    p_form.add_argument("--pack", metavar="PATH",
+                        help="꾸러미를 .skill 한 파일로 묶어 저장")
+    p_form.add_argument("--report-only", action="store_true",
+                        help="해부 결과만 보고 만들지 않음")
+
     p_exp = sub.add_parser("export-skill", help="프로파일 → 스킬 폴더")
     p_exp.add_argument("profile")
     p_exp.add_argument("-o", "--out", default="./my-skill")
@@ -342,6 +378,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if cmd == "capture":
             return run_capture(args.source, args.out, args.kind, args.title,
                                args.hwpx, args.profile)
+        if cmd == "formkit":
+            return run_formkit(args.source, args.out, args.name, args.pack,
+                               args.report_only)
         if cmd == "export-skill":
             return run_export_skill(args.profile, args.out, args.slug, args.standalone)
     except FileNotFoundError as exc:
