@@ -326,7 +326,7 @@ def _update_para_pr_line_spacing(xml: str, para_id: int, ls_val: int) -> str:
 # ──────────────────────────────────────────────────────────────
 # 자동 번호 접두어
 # ──────────────────────────────────────────────────────────────
-def _auto_prefix(kind: str, n: int) -> str:
+def _auto_prefix(kind: str, n: int, chapter: int = 0) -> str:
     if kind == "AUTO_ROMAN":
         return f"{ROMAN[n]}. " if n < len(ROMAN) else f"{n + 1}. "
     if kind == "AUTO_NUM":
@@ -337,6 +337,16 @@ def _auto_prefix(kind: str, n: int) -> str:
         return f"{HANGUL[n]}. " if n < len(HANGUL) else f"{n + 1}. "
     if kind == "AUTO_CIRCLED":
         return f"{CIRCLED[n]} " if n < len(CIRCLED) else f"{n + 1}) "
+    if kind == "AUTO_CHAPTER":          # 제1장 — 연구보고서 장 제목
+        return f"제{n + 1}장 "
+    if kind == "AUTO_SECTION":          # 제1절 — 연구보고서 절 제목
+        return f"제{n + 1}절 "
+    if kind == "AUTO_PAREN":            # 1) — 숫자에 닫는 괄호
+        return f"{n + 1}) "
+    if kind == "AUTO_TABLE":            # 〈표 1-1〉 — 장 번호를 따라간다
+        return f"〈표 {chapter}-{n + 1}〉 "
+    if kind == "AUTO_FIGURE":           # 〔그림 1-1〕
+        return f"〔그림 {chapter}-{n + 1}〕 "
     return ""
 
 
@@ -346,11 +356,17 @@ class _Numbering:
     def __init__(self, profile: Dict[str, Any]) -> None:
         self.order = [lv["key"] for lv in profile["levels"]]
         self.counters: Dict[str, int] = {k: 0 for k in self.order}
+        #: 표·그림 번호가 따라가는 장 번호(〈표 1-1〉의 앞자리)
+        self.chapter_keys = {lv["key"] for lv in profile["levels"]
+                             if lv.get("prefix") == "AUTO_CHAPTER"}
+        self.chapter = 0
 
     def next_prefix(self, key: str, kind: str) -> str:
         idx = self.order.index(key) if key in self.order else len(self.order)
         value = self.counters.get(key, 0)
-        text = _auto_prefix(kind, value)
+        if key in self.chapter_keys:
+            self.chapter = value + 1
+        text = _auto_prefix(kind, value, self.chapter)
         self.counters[key] = value + 1
         for deeper in self.order[idx + 1:]:
             self.counters[deeper] = 0

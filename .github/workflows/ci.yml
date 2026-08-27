@@ -57,6 +57,8 @@ jobs:
           hwpx-studio build examples/input_diagram_styled.md -p policy-default -o out/도식_색지정_예제.hwpx --no-lint
           hwpx-studio build examples/input_diagram_side.md   -p policy-default -o out/도식_세로목록형_예제.hwpx --no-lint
           hwpx-studio build examples/input_strategy.md       -p policy-default -o out/전략체계도_예제.hwpx --no-lint
+          hwpx-studio build examples/input_db.md             -p policy-default -o out/DB구성도_예제.hwpx
+          hwpx-studio build examples/input_research.md       -p kihasa-research -o out/연구보고서_예제.hwpx
           hwpx-studio diagram "대표 > 기획부, 운영부, 연구부" -o out/조직도.hwpx --title "조직 체계"
       - name: 양식 꾸러미 만들기·되돌리기 (양식 보존 왕복)
         run: |
@@ -66,6 +68,9 @@ jobs:
           python out/양식꾸러미/build_form.py out/양식꾸러미/예시.md -o out/양식보존_예제.hwpx
           python out/양식꾸러미/read_hwpx.py out/개조식_예제.hwpx \
             -o out/되돌린_원고.md --report out/되돌리기_근거.md
+          # 장 번호를 바꿔도 서식이 지켜지는지(표 번호 접두가 함께 바뀐다)
+          python out/양식꾸러미/build_form.py out/양식꾸러미/예시.md \
+            -o out/양식보존_3장.hwpx --chapter 3
           python - <<'CHECK'
           import zipfile
           a = zipfile.ZipFile("out/개조식_예제.hwpx")

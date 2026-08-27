@@ -1,9 +1,11 @@
 import re
 import zipfile
 from io import BytesIO
+from pathlib import Path
 
 from hwpx_studio.engine import build_document, normalize_contents, plan_ids
-from hwpx_studio.profile import merge_profile
+from hwpx_studio.parser import parse_text
+from hwpx_studio.profile import load_profile, merge_profile
 
 
 def read_part(data, name):
@@ -74,3 +76,61 @@ def test_signature_is_off_by_default(policy):
     assert "signature" not in ids_used
     section = read_part(data, "Contents/section0.xml")
     assert len(re.findall(r"<hp:t>", section)) == 1
+
+
+# ──────────────────────────────────────────────────────────────
+# 연구보고서 서식 — 장·절 번호와 표·그림 번호
+# ──────────────────────────────────────────────────────────────
+_PROFILES = Path(__file__).resolve().parent.parent / "hwpx_studio" / "profiles"
+
+
+def _research_profile():
+    return load_profile(str(_PROFILES / "kihasa-research.json"))
+
+
+def _research_texts(source: str):
+    profile = _research_profile()
+    parsed = parse_text(source, profile)
+    data = build_document(profile, parsed.items).data
+    with zipfile.ZipFile(BytesIO(data)) as zf:
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+    return [t for t in re.findall(r"<hp:t>([^<]*)</hp:t>", section) if t], section, parsed
+
+
+def test_chapter_and_section_numbers_are_written():
+    texts, _section, _parsed = _research_texts(
+        "# 배경\n## 필요성\n### 문제\n#### 갈래\n##### 세부\n")
+    assert texts[:5] == ["제1장 배경", "제1절 필요성", "1. 문제", "가. 갈래", "1) 세부"]
+
+
+def test_table_number_follows_the_chapter():
+    """〈표 1-1〉의 앞자리는 장 번호다. 장이 바뀌면 표 번호도 다시 센다."""
+    texts, _section, _parsed = _research_texts(
+        "# 첫 장\n표) 첫 표\n표) 둘째 표\n# 둘째 장\n표) 셋째 표\n그림) 첫 그림\n")
+    captions = [t for t in texts if t.startswith(("〈표", "〔그림"))]
+    assert captions == ["〈표 1-1〉 첫 표", "〈표 1-2〉 둘째 표",
+                        "〈표 2-1〉 셋째 표", "〔그림 2-1〕 첫 그림"]
+
+
+def test_body_text_needs_no_marker_and_is_not_warned():
+    """이 서식은 본문에 기호를 쓰지 않는다. 마커 없는 줄이 제자리를 찾는다."""
+    texts, _section, parsed = _research_texts("### 문제\n본문 내용이다.\n")
+    assert "본문 내용이다." in texts
+    assert not any("마커 없는 줄" in w for w in parsed.warnings), parsed.warnings
+
+
+def test_table_note_lines_drop_the_input_marker():
+    """※는 입력에서 부르는 이름일 뿐, 문서에는 '주:'·'출처:'만 남는다."""
+    texts, _section, _parsed = _research_texts("※ 주: 12월 말 기준이다.\n")
+    assert "주: 12월 말 기준이다." in texts
+    assert not any(t.startswith("※") for t in texts)
+
+
+def test_unnumbered_levels_do_not_trip_the_outline_check():
+    """본문·주는 어느 제목 밑에나 온다. 레벨 점프로 잡으면 안 된다."""
+    from hwpx_studio.lint import lint_items
+
+    profile = _research_profile()
+    parsed = parse_text("# 장\n본문이다.\n#### 가 제목\n※ 주: 딸린 줄이다.\n", profile)
+    issues = lint_items(parsed.items, profile, parsed.line_of, parsed.warnings)
+    assert not [i for i in issues if i.code == "jump"], [i.format() for i in issues]

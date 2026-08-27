@@ -29,8 +29,11 @@ ROMAN_CHARS = "ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ"
 CIRCLED_CHARS = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮"
 
 _PREFIX_PATTERNS: List[Tuple[str, "re.Pattern[str]"]] = [
+    ("AUTO_CHAPTER", re.compile(r"^제\s?\d{1,2}\s?장\s")),
+    ("AUTO_SECTION", re.compile(r"^제\s?\d{1,2}\s?절\s")),
     ("AUTO_ROMAN", re.compile(rf"^[{ROMAN_CHARS}]+[.)]\s")),
-    ("AUTO_NUM", re.compile(r"^\d{1,2}[.)]\s")),
+    ("AUTO_NUM", re.compile(r"^\d{1,2}\.\s")),
+    ("AUTO_PAREN", re.compile(r"^\d{1,2}\)\s")),
     ("AUTO_ALPHA", re.compile(r"^[A-Z][.)]\s")),
     ("AUTO_CIRCLED", re.compile(rf"^[{CIRCLED_CHARS}]\s?")),
     ("AUTO_HANGUL", re.compile(r"^[가나다라마바사아자차카타파하][.)]\s")),

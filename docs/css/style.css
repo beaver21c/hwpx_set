@@ -189,3 +189,45 @@ input[type="file"] {
   color: var(--ink);
   font-size: 0.85rem;
 }
+
+/* ② 도식 — 미리보기 격자와 작성 예시 */
+.tiny { font-size: 0.75rem; color: var(--muted); font-weight: 400; }
+
+.gridwrap { margin-top: 12px; overflow-x: auto; }
+
+.gridview {
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 11px;
+  line-height: 1.3;
+  background: var(--panel);
+}
+.gridview td {
+  text-align: center;
+  vertical-align: middle;
+  padding: 1px 3px;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.gridtitle {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.sample { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; }
+.sample:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+.sample-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sample-head h3 { margin: 0; font-size: 0.92rem; }
+.sample-head code { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); font-weight: 400; }
+/* 격자는 폭을 다 써야 잘리지 않는다. 그래서 코드 위, 결과 아래로 쌓는다. */
+.sample-body pre { margin: 0; font-size: 12px; }
+.sample-body .gridwrap { margin-top: 10px; }
+.sample-body .gridwrap::after {
+  content: "↑ 한글에서 나올 모양(근사)";
+  display: block;
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}

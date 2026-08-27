@@ -96,7 +96,7 @@ def test_build_downloads_valid_hwpx(browser, server, tmp_path):
     import zipfile
 
     page, problems = open_page(browser, server)
-    page.click('[data-sample="outline"]')
+    page.click('[data-sample="research"]')
     page.fill("#filename", "검사용")
     with page.expect_download() as download:
         page.click("#build")
@@ -187,6 +187,67 @@ def test_capture_of_svg_and_then_build(browser, server, tmp_path):
     assert problems == []
 
 
+def test_diagram_downloads_a_hwpx_on_its_own(browser, server, tmp_path):
+    """② 갈래에서 도식만으로 바로 한글파일이 나온다(본문을 거치지 않는다)."""
+    import zipfile
+
+    page, problems = open_page(browser, server, "diagram")
+    page.click('[data-diagram-sample="db"]')
+    page.wait_for_timeout(200)
+    page.fill("#capture-filename", "DB구성")
+
+    with page.expect_download() as download:
+        page.click("#capture-download")
+    saved = tmp_path / "db.hwpx"
+    download.value.save_as(str(saved))
+
+    assert download.value.suggested_filename == "DB구성.hwpx"    # 확장자 자동 보정
+    with zipfile.ZipFile(str(saved)) as zf:
+        assert zf.testzip() is None
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+    for word in ("회원", "신청ID (PK)", "회원ID (FK)", "지원사업 DB 구성"):
+        assert word in section
+    assert "저장됨" in page.inner_text("#capture-status")
+
+    go(page, "write")
+    assert page.input_value("#body-text").strip() == ""          # 본문은 건드리지 않는다
+    assert problems == []
+
+
+def test_diagram_samples_draw_their_own_preview(browser, server):
+    """작성 예시 다섯 가지가 각각 결과 격자까지 그린다."""
+    page, problems = open_page(browser, server, "diagram")
+    page.wait_for_selector("#diagram-samples .sample")
+    assert page.locator("#diagram-samples .sample").count() == 5
+    assert page.locator("#diagram-samples table.gridview").count() == 5
+
+    db = page.locator("#diagram-samples .sample", has_text="DB 구성").first
+    assert "신청ID (PK)" in db.inner_text()          # 열쇠 표시가 미리보기에 나온다
+    assert "→" in db.inner_text()                    # 관계 화살표도
+    assert problems == []
+
+
+def test_diagram_preview_follows_what_is_typed(browser, server):
+    page, problems = open_page(browser, server, "diagram")
+    page.fill("#capture-text", ":::diagram type=flow\n접수 → 심의 → 통보\n:::")
+    page.click("#capture-preview")
+    page.wait_for_selector("#capture-view table.gridview")
+    view = page.inner_text("#capture-view")
+    for word in ("접수", "심의", "통보", "→"):
+        assert word in view
+    assert problems == []
+
+
+def test_diagram_download_reports_what_it_cannot_draw(browser, server):
+    """그리지 못한 관계는 조용히 넘어가지 않는다."""
+    page, _ = open_page(browser, server, "diagram")
+    page.fill("#capture-text",
+              ":::diagram type=db\n[가]\n  값\n[나]\n  값\n[다]\n  값\n가 → 다\n:::")
+    page.click("#capture-preview")
+    page.wait_for_timeout(200)
+    assert "붙어 있지 않아" in page.inner_text("#capture-status")
+
+
 def test_capture_reports_unreadable_input(browser, server):
     page, _ = open_page(browser, server, "diagram")
     page.fill("#capture-text", "이건 그냥 문장이다")
@@ -212,6 +273,7 @@ def test_standalone_single_file_works(browser, tmp_path):
     page.on("pageerror", lambda e: problems.append(str(e)))
     page.goto(out.as_uri(), wait_until="load")
     go(page, "diagram")
+    page.wait_for_selector("#diagram-samples table.gridview")   # 예시 미리보기도 그려진다
     page.click('[data-capture-sample="mermaid"]')
     page.click("#capture-run")
     page.wait_for_timeout(200)

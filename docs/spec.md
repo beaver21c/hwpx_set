@@ -151,9 +151,10 @@ hwpx-studio/
 ├── profiles/
 │   ├── policy-default.json        # 기존 생성기 값(Ⅰ./1./□/○/-/·/※ 7레벨)
 │   ├── gov-3level.json            # □/○/- 3레벨
-│   └── narrative.json             # 서술식
+│   ├── narrative.json             # 서술식
+│   └── kihasa-research.json       # 연구보고서(제N장·제N절, 장별 표·그림 번호)
 ├── templates/SKILL.template.md, prompt_snippets/
-├── examples/input_outline.md, input_narrative.md, input_diagram.md
+├── examples/input_outline.md, input_narrative.md, input_diagram.md, input_research.md
 ├── docs/
 │   ├── index.html                 # (2단계) 프로파일 편집기 → JS 변환기
 │   ├── writing-guide.md           # 본문 작성법
@@ -253,8 +254,19 @@ hwpx-studio/
 | 기획 | 본부 | 지역본부 |
 | 집행 | 사업단 | 현장사무소 |
 :::
+
+:::diagram type=db
+[회원]
+  *회원ID
+  이름
+[신청]
+  *신청ID
+  +회원ID
+회원 → 신청
+:::
 ```
 - `type`: `org`(상하 계층) / `flow`(`→` 1줄, direction=right|down) / `matrix`(격자)
+  / `strategy`(단이 쌓인 전략체계도) / `db`(테이블 상자 + 필드, `*`=PK `+`=FK)
 - 트리 들여쓰기 2칸(마크다운 중첩 목록과 동일 → AI 생성 난이도 최소)
 - 옵션: `render=table|image`, `title`(표 캡션), `width=mm`
 

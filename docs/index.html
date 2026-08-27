@@ -27,8 +27,8 @@
   <button type="button" class="lane" data-lane="diagram" aria-pressed="false">
     <span class="lane-no">2</span>
     <span class="lane-name">도식을 한글 표로</span>
-    <span class="lane-why">조직도·절차도·전략체계도를 한글에서 편집 가능한 표로.
-      남의 도식을 읽어 오기도 합니다</span>
+    <span class="lane-why">조직도·매트릭스·절차도·DB구성을 한글에서 편집 가능한 표로.
+      여기서 바로 한글파일을 받습니다</span>
   </button>
   <button type="button" class="lane" data-lane="convert" aria-pressed="false">
     <span class="lane-no">3</span>
@@ -112,60 +112,60 @@
   <div data-panel="diagram" hidden>
     <section class="panel">
       <div class="panel-head">
-        <h2>② 도식 가져오기</h2>
+        <h2>② 도식을 한글 표로</h2>
         <div class="head-actions">
-          <button type="button" class="ghost" data-capture-sample="mermaid">Mermaid 예시</button>
-          <button type="button" class="ghost" data-capture-sample="svg">SVG 예시</button>
+          <button type="button" class="ghost" data-capture-sample="mermaid">Mermaid 붙여넣기</button>
+          <button type="button" class="ghost" data-capture-sample="svg">SVG 붙여넣기</button>
         </div>
       </div>
-      <p class="hint">다른 곳에 있는 조직도·절차도를 붙여 넣으면 본문에 넣을 도식 블록으로
-        바꿔 줍니다. <strong>Mermaid</strong>(위키·AI가 흔히 내놓는 형식), <strong>SVG</strong>,
-        그 둘이 든 <strong>HTML·마크다운</strong>을 읽습니다. 색과 점선은 원본에 적힌 값을 그대로 가져옵니다.</p>
-      <textarea id="capture-text" spellcheck="false" placeholder="flowchart TD
-    A[대표] --> B[기획부]
-    A --> C[운영부]
-    style A fill:#1F3864,color:#FFFFFF"></textarea>
-      <div class="fields">
-        <label>도식 제목
-          <input id="capture-title" type="text" placeholder="예: 추진 체계" spellcheck="false">
-        </label>
-      </div>
-      <div class="actions">
-        <button type="button" id="capture-run" class="primary">읽어서 본문에 넣기</button>
-      </div>
-      <p class="status" id="capture-status" role="status"></p>
-      <p class="hint">읽어 들인 블록은 <strong>④ 여기서 바로 쓰기</strong>의 본문 칸 끝에 붙습니다.
-        거기서 문서를 만들거나, 그 블록을 그대로 복사해 ①의 꾸러미에 넣어 쓰세요.</p>
-    </section>
-
-    <section class="panel">
-      <h2>손으로 쓰는 도식 문법</h2>
-      <p><strong>조직도·체계도</strong> — 2칸 들여쓰기가 한 단계 아래입니다.</p>
-      <pre>:::diagram type=org title="추진 체계"
+      <p class="hint">아래에 <strong>도식 문법</strong>을 직접 쓰거나, 다른 곳의
+        <strong>Mermaid·SVG</strong>를 붙여 넣으세요. 그대로 <strong>한글파일로 내려받을 수 있고</strong>,
+        ④ 본문에 붙여 이어 쓸 수도 있습니다. 아래 <strong>예시 다섯 가지</strong> 중 하나를 눌러 시작해도 됩니다.</p>
+      <textarea id="capture-text" spellcheck="false" placeholder=":::diagram type=org title=&quot;추진 체계&quot;
 대표
   기획부
   운영부
-:::</pre>
-      <p><strong>절차도</strong> — 화살표 한 줄. 세로는 <code>direction=down</code>.</p>
-      <pre>:::diagram type=flow
-접수 → 검토 → 심의 → 통보
-:::</pre>
-      <p><strong>매트릭스</strong> — <code>type=matrix</code>에 표를 그대로 씁니다.</p>
-      <p><strong>전략체계도</strong> — 왼쪽 단 이름, 오른쪽 칸들. 라벨 없이 <code>|</code>로
-         시작한 줄은 위 단의 다음 줄입니다.</p>
-      <pre>:::diagram type=strategy
-미션 | 국민의 삶의 질 향상에 기여한다
-핵심가치 | 공감 | 안전 | 공정 | 신뢰
-4대 전략방향 | 분쟁해결 | 안전환경 | 거래환경 | 혁신경영
-| 세부과제1 | 세부과제2 | 세부과제3 | 세부과제4
-:::</pre>
-      <p><strong>상자 색</strong> — 이름 뒤에 <code>{ }</code>로 적습니다.
-         상자가 많으면(8개 이상) 세로 목록형으로 자동 전환됩니다.</p>
-      <pre>:::diagram type=org
-대표 {fill=#C00000 color=#FFFFFF}
-  기획부 {fill=#2E75B6 color=#FFFFFF}
-  감사실 {link=dash}
-:::</pre>
+:::"></textarea>
+      <div class="fields">
+        <label>도식 제목 <span class="tiny">블록에 title이 없을 때만 씁니다</span>
+          <input id="capture-title" type="text" placeholder="예: 추진 체계" spellcheck="false">
+        </label>
+        <label>파일 이름
+          <input id="capture-filename" type="text" value="도식.hwpx" spellcheck="false">
+        </label>
+      </div>
+      <div class="actions">
+        <button type="button" id="capture-download" class="primary">한글파일로 받기</button>
+        <button type="button" id="capture-preview">결과 미리보기</button>
+        <button type="button" id="capture-run">④ 본문에 넣기</button>
+      </div>
+      <p class="status" id="capture-status" role="status"></p>
+      <div id="capture-view" class="gridwrap" hidden></div>
+    </section>
+
+    <section class="panel">
+      <h2>작성 예시와 결과</h2>
+      <p class="hint">왼쪽이 쓰는 법, 오른쪽이 한글에서 나올 모양입니다.
+        <strong>이 예시 넣기</strong>를 누르면 위 칸에 들어가니 그대로 받아 보세요.</p>
+      <div id="diagram-samples"></div>
+      <p class="hint">미리보기는 <strong>근사</strong>입니다. 칸 폭·글꼴·줄바꿈은 한글에서 확인하세요.
+        연결선은 칸의 <strong>한 변 테두리</strong>로 그리므로 실제 문서가 더 깔끔합니다.</p>
+    </section>
+
+    <section class="panel">
+      <h2>옵션 — 모든 도식에 함께 쓸 수 있는 것</h2>
+      <table class="cheat">
+        <thead><tr><th>쓰는 법</th><th>뜻</th></tr></thead>
+        <tbody>
+          <tr><td><code>title="추진 체계"</code></td><td>도식 아래 붙는 제목</td></tr>
+          <tr><td><code>width=120</code></td><td>도식 최대 폭(mm). 넘치면 상자를 줄입니다</td></tr>
+          <tr><td><code>{fill=#C00000 color=#FFFFFF}</code></td><td>상자 배경·글자색</td></tr>
+          <tr><td><code>{border=#1F3864}</code> / <code>{border=none}</code></td><td>테두리 색 / 테두리 없애기</td></tr>
+          <tr><td><code>{link=dash}</code></td><td>이 상자로 오는 연결선을 점선으로</td></tr>
+          <tr><td><code>layout=side</code></td><td>조직도를 세로 목록형으로(상자가 많을 때)</td></tr>
+          <tr><td><code>direction=down</code></td><td>절차도를 세로로</td></tr>
+        </tbody>
+      </table>
     </section>
 
     <section class="panel notes">
@@ -174,6 +174,8 @@
         <li>그림(PNG·스캔)은 읽지 못합니다. 구조가 글자로 남아 있는 것만 읽습니다.</li>
         <li>그림뿐인 도식은 AI에게 보여 주고 위 문법으로 받아쓰게 한 뒤 눈으로 맞춰 보세요.</li>
         <li>표로 애초에 안 되는 것: 둥근 모서리, 곡선, 화살촉, 그림자.</li>
+        <li>DB 구성도의 관계 화살표는 <strong>붙어 있는 두 테이블 사이</strong>에만 그립니다.
+            떨어져 있으면 그리지 못했다고 알려 드리니 테이블 순서를 바꾸세요.</li>
       </ul>
     </section>
   </div>
@@ -223,7 +225,7 @@
       <div class="panel-head">
         <h2>④ 본문</h2>
         <div class="head-actions">
-          <button type="button" class="ghost" data-sample="outline">개조식 예시</button>
+          <button type="button" class="ghost" data-sample="research">연구보고서 예시</button>
           <button type="button" class="ghost" data-sample="diagram">도식 예시</button>
           <button type="button" class="ghost" data-sample="narrative">서술식 예시</button>
         </div>

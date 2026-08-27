@@ -1,7 +1,8 @@
 /** 웹 UI 연결부. 엔진은 hwpx-studio.js, 자산(템플릿·프로파일)은 assets.js. */
 
 import { HWPX_PROFILES, HWPX_TEMPLATE_B64 } from '../assets.js';
-import { base64ToBytes, buildFromText, lintItems, mergeProfile, parseText } from './hwpx-studio.js';
+import { base64ToBytes, buildFromText, buildGrid, lintItems, mergeProfile,
+         parseDiagramBlock, parseText } from './hwpx-studio.js';
 import { captureText, specToText } from './capture.js';
 import { buildBundle, packBundle, readContents } from './bundle.js';
 import { analyzeParts } from './formkit.js';
@@ -18,31 +19,37 @@ const issuesEl = $('issues');
 const reportPanel = $('report-panel');
 
 const SAMPLES = {
-  outline: `# 사업 추진 현황
-## 추진 개요
-□ 추진 배경 및 목적
-○ 제도 개선 요구가 지속 제기되어 개선 방안을 마련
-- 기존 절차의 처리 기간이 길어 이용자 불편이 누적
-- 담당 부서별 기준이 달라 안내가 일관되지 않음
-○ 이용자 편의 개선과 처리 기간 단축을 목표로 설정
-- 목표는 부서 협의를 거쳐 확정
-- 세부 지표는 분기별로 점검
+  research: `# 연구의 배경과 목적
+## 연구의 필요성
+### 문제 제기
+차상위계층 지원제도는 부처별로 나뉘어 운영되어 왔다. 그 결과 같은 가구가 제도마다 다른 기준으로 심사받는 일이 생긴다.
+#### 제도 간 기준의 차이
+소득인정액 산정 방식이 제도마다 달라, 한 제도에서 수급 자격이 인정된 가구가 다른 제도에서는 탈락하는 사례가 확인된다[^1].
+##### 산정 방식의 세 갈래
+재산의 소득환산율, 부양의무자 기준, 근로소득 공제율이 제도마다 다르게 적용된다.
+### 연구의 목적
+본 연구는 차상위계층 지원제도의 연계 실태를 확인하고 통합지원 방안을 제시하는 데 목적이 있다.
 
-□ 지표별 실적
+## 연구의 내용과 방법
+### 연구 내용
+제도 현황 분석, 수급 실태 분석, 해외 사례 검토, 개선 방안 도출의 네 부분으로 구성하였다.
 
-| 구분 | 목표 | 실적 |
-|---|---|---|
-| 처리 기간 | 14일 | 11일 |
-| 이용 건수 | 1,000건 | 1,240건 |
+표) 연도별 차상위계층 지원 실적
 
-○ 처리 기간은 목표 대비 3일 단축
-- 사전 검토 절차를 통합한 효과로 판단
-- 접수량이 많은 기간에는 지연 사례가 발생
-○ 이용 건수는 목표를 상회[^1]
-- 안내 창구 확대가 주된 요인
-- 재방문 비율은 [확인 필요]
+| 구분 | 2023년 | 2024년 | 2025년 |
+|---|---|---|---|
+| 지원 가구 | 12,480 | 13,205 | 14,116 |
+| 지원 금액(억 원) | 1,204 | 1,388 | 1,502 |
+| 평균 처리 기간(일) | 21 | 17 | 14 |
 
-[^1]: 내부 행정통계, 2025년 상반기 기준.
+※ 주: 각 연도 12월 말 기준이다.
+※ 출처: 보건복지부. (2025). 『차상위계층 지원사업 운영현황』. 47쪽.
+
+### 연구 방법
+행정자료 분석과 심층면접을 병행하였다. 심층면접은 45개 지방자치단체의 담당자를 대상으로 하였다[^2].
+
+[^1]: 한국보건사회연구원. (2024). 『차상위계층 지원제도 실태조사』. 112쪽.
+[^2]: 면접 기간은 2025년 9월부터 11월까지이다.
 `,
   diagram: `# 추진 체계
 
@@ -290,6 +297,252 @@ async function fileBytes(input) {
 
 const stripExtension = (name) => name.replace(/\.hwpx$/i, '');
 
+// ──────────────────────────────────────────────────────────────
+// ② 도식을 한글 표로
+// ──────────────────────────────────────────────────────────────
+
+/** 작성 예시. 이름·설명·본문. 미리보기는 같은 엔진으로 그 자리에서 그린다. */
+const DIAGRAM_SAMPLES = [
+  {
+    key: 'org',
+    name: '조직도 · 체계도',
+    type: 'type=org',
+    why: '2칸 들여쓰면 한 단계 아래입니다. 연결선은 도구가 긋습니다.',
+    source: `:::diagram type=org title="추진 체계"
+○○위원회 {fill=#C00000 color=#FFFFFF}
+  기획분과
+    정책팀
+    예산팀
+  운영분과
+  자문단 {fill=#FFF2CC link=dash}
+:::`,
+  },
+  {
+    key: 'matrix',
+    name: '매트릭스',
+    type: 'type=matrix',
+    why: '표를 그대로 씁니다. 첫 줄과 첫 칸이 머리가 됩니다.',
+    source: `:::diagram type=matrix title="과제별 추진 일정"
+| 구분 | 1단계(2026) | 2단계(2027) | 3단계(2028) |
+| 제도 정비 | 실태조사 | 개정안 마련 | 시행 |
+| 전달체계 | 시범사업 | 대상 확대 | 정착 |
+| 정보화 | 시스템 설계 | 구축 | 운영·고도화 |
+:::`,
+  },
+  {
+    key: 'flow',
+    name: '절차도',
+    type: 'type=flow',
+    why: '화살표로 잇습니다. 세로로 두려면 direction=down.',
+    source: `:::diagram type=flow title="신청 처리 절차"
+접수 → 자격 확인 → 심의 → 결정 통보 → 지급
+:::`,
+  },
+  {
+    key: 'db',
+    name: 'DB 구성',
+    type: 'type=db',
+    why: '[테이블] 아래 필드를 적습니다. * 는 기본키, + 는 외래키입니다.',
+    source: `:::diagram type=db title="지원사업 DB 구성"
+[회원]
+  *회원ID
+  이름
+  생년월일
+  연락처
+[신청]
+  *신청ID
+  +회원ID
+  +사업코드
+  신청일
+  처리상태
+[사업]
+  *사업코드
+  사업명
+  소관부처
+회원 → 신청 → 사업
+:::`,
+  },
+  {
+    key: 'strategy',
+    name: '전략체계도',
+    type: 'type=strategy',
+    why: '왼쪽이 단 이름, 오른쪽이 칸들. | 로 시작하면 위 단의 다음 줄입니다.',
+    source: `:::diagram type=strategy title="경영전략 체계도" label_width=24
+미션 {fill=#17375E color=#FFFFFF} | 국민의 삶의 질 향상에 기여한다 {fill=#EAEFF9 color=#17375E}
+핵심가치 {fill=#3EA9A9 color=#FFFFFF} | 공감 | 안전 | 공정 | 신뢰
+4대 전략방향 {fill=#5CBF7A color=#FFFFFF} | 분쟁해결 | 안전환경 | 거래환경 | 혁신경영
+| 피해 회복 | 위해요인 탐지 | 거래 감시 | ESG 경영
+:::`,
+  },
+];
+
+/** 붙여 넣은 것이 도식 문법이면 그대로, Mermaid·SVG면 읽어서 spec으로. */
+function diagramSpecOf(source, title) {
+  const text = String(source || '').trim();
+  if (!text) throw new Error('도식을 쓰거나 붙여 넣으세요.');
+
+  let spec;
+  let from = '직접 쓴 도식';
+  let warnings = [];
+  if (/^\s*:::diagram\b/m.test(text)) {
+    const lines = text.split(/\r?\n/);
+    const start = lines.findIndex((l) => /^\s*:::diagram\b/.test(l));
+    const body = [];
+    for (let i = start + 1; i < lines.length; i += 1) {
+      if (lines[i].trim() === ':::') break;
+      body.push(lines[i]);
+    }
+    spec = parseDiagramBlock(lines[start].trim().replace(/^:::diagram\s*/, ''), body);
+  } else {
+    const read = captureText(text, 'auto', title);
+    if (!read.spec.lines.length) throw new Error(read.warnings[0] || '도식을 찾지 못했습니다.');
+    spec = read.spec;
+    from = read.source;
+    warnings = read.warnings;
+  }
+  if (!spec.lines.length) throw new Error('도식 내용이 비어 있습니다.');
+  if (!spec.title && title) spec.title = title;
+  return { spec, from, warnings };
+}
+
+const captureSay = statusOf('capture-status');
+
+/** GridPlan을 HTML 표로. 근사 미리보기다(연결선은 실제로 칸의 한 변 테두리). */
+function gridToHtml(grid) {
+  const dia = grid.diagram || {};
+  const px = 3.2;                                   // 1mm를 몇 px로 볼지
+  const at = new Map(grid.cells.map((c) => [`${c.row},${c.col}`, c]));
+  const covered = new Set();
+  for (const c of grid.cells) {
+    for (let r = c.row; r < c.row + (c.rowSpan || 1); r += 1) {
+      for (let k = c.col; k < c.col + (c.colSpan || 1); k += 1) {
+        if (r !== c.row || k !== c.col) covered.add(`${r},${k}`);
+      }
+    }
+  }
+
+  const rows = [];
+  for (let r = 0; r < grid.rows; r += 1) {
+    const tds = [];
+    for (let c = 0; c < grid.cols; c += 1) {
+      if (covered.has(`${r},${c}`)) continue;
+      const cell = at.get(`${r},${c}`);
+      const style = [`height:${(grid.rowHeights[r] || 9) * px}px`];
+      if (cell) {
+        const line = cell.borderColor
+          || (cell.fill ? (dia.box_border || '#1F3864') : (dia.line_color || '#1F3864'));
+        for (const side of ['top', 'right', 'bottom', 'left']) {
+          if ((cell.borders || []).includes(side)) {
+            style.push(`border-${side}:1px solid ${line}`);
+          }
+        }
+        if (cell.fill) style.push(`background:${cell.fill}`);
+        if (cell.textColor) style.push(`color:${cell.textColor}`);
+      }
+      const span = cell && (cell.colSpan || 1) > 1 ? ` colspan="${cell.colSpan}"` : '';
+      const rspan = cell && (cell.rowSpan || 1) > 1 ? ` rowspan="${cell.rowSpan}"` : '';
+      tds.push(`<td${span}${rspan} style="${style.join(';')}">${escapeHtml(cell ? cell.text : '')}</td>`);
+    }
+    rows.push(`<tr>${tds.join('')}</tr>`);
+  }
+  const cols = grid.colWidths.map((w) => `<col style="width:${w * px}px">`).join('');
+  const caption = grid.title
+    ? `<p class="gridtitle">&lt;${escapeHtml(grid.title)}&gt;</p>` : '';
+  return `<table class="gridview" style="width:${grid.colWidths.reduce((a, b) => a + b, 0) * px}px">`
+    + `<colgroup>${cols}</colgroup><tbody>${rows.join('')}</tbody></table>${caption}`;
+}
+
+/** 위 칸의 내용을 미리보기로 그린다. 실패하면 이유를 남기고 false. */
+function drawCapturePreview(quiet = false) {
+  const view = $('capture-view');
+  let read;
+  try {
+    read = diagramSpecOf($('capture-text').value, $('capture-title').value.trim());
+  } catch (error) {
+    view.hidden = true;
+    if (!quiet) captureSay(error.message, 'bad');
+    return null;
+  }
+  const grid = buildGrid(read.spec, mergeProfile(HWPX_PROFILES[profileSelect.value]));
+  view.innerHTML = gridToHtml(grid);
+  view.hidden = false;
+  const notes = [...read.warnings, ...grid.warnings];
+  captureSay(`${read.from} — 상자 ${grid.cells.filter((c) => c.text).length}개`
+    + (notes.length ? ` · ${notes.join(' / ')}` : ''), notes.length ? '' : 'ok');
+  return { read, grid };
+}
+
+/** 도식 하나만 든 한글파일을 만들어 곧바로 내려받는다. */
+async function downloadDiagram() {
+  const button = $('capture-download');
+  let read;
+  try {
+    read = diagramSpecOf($('capture-text').value, $('capture-title').value.trim());
+  } catch (error) {
+    captureSay(error.message, 'bad');
+    return;
+  }
+  button.disabled = true;
+  captureSay('만드는 중…');
+  try {
+    if (!template) template = base64ToBytes(HWPX_TEMPLATE_B64);
+    const result = await buildFromText(template, HWPX_PROFILES[profileSelect.value],
+      `${specToText(read.spec)}\n`);
+    let name = ($('capture-filename').value || '도식.hwpx').trim().replace(/[\\/]/g, '');
+    if (!name.endsWith('.hwpx')) name += '.hwpx';
+    saveFile(result.bytes, name, 'application/hwp+zip');
+    drawCapturePreview(true);
+    const notes = [...read.warnings, ...(result.warnings || [])];
+    captureSay(`${name} 저장됨 (${result.bytes.length.toLocaleString('ko-KR')} bytes)`
+      + (notes.length ? ` · ${notes.join(' / ')}` : ''), 'ok');
+  } catch (error) {
+    console.error(error);
+    captureSay(`만들지 못했습니다: ${error.message}`, 'bad');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/** 작성 예시 목록을 그린다(미리보기까지 같은 엔진으로). */
+let samplesDrawn = false;
+function drawDiagramSamples() {
+  if (samplesDrawn) return;
+  const host = $('diagram-samples');
+  if (!host) return;
+  const profile = mergeProfile(HWPX_PROFILES[profileSelect.value]);
+  host.innerHTML = DIAGRAM_SAMPLES.map((sample) => {
+    let preview = '';
+    try {
+      const { spec } = diagramSpecOf(sample.source, '');
+      preview = gridToHtml(buildGrid(spec, profile));
+    } catch (error) {
+      preview = `<p class="hint">미리보기를 그리지 못했습니다: ${escapeHtml(error.message)}</p>`;
+    }
+    return `<div class="sample">
+      <div class="sample-head">
+        <h3>${escapeHtml(sample.name)} <code>${escapeHtml(sample.type)}</code></h3>
+        <button type="button" class="ghost" data-diagram-sample="${sample.key}">이 예시 넣기</button>
+      </div>
+      <p class="hint">${escapeHtml(sample.why)}</p>
+      <div class="sample-body">
+        <pre>${escapeHtml(sample.source)}</pre>
+        <div class="gridwrap">${preview}</div>
+      </div>
+    </div>`;
+  }).join('');
+  host.querySelectorAll('[data-diagram-sample]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const sample = DIAGRAM_SAMPLES.find((s) => s.key === button.dataset.diagramSample);
+      $('capture-text').value = sample.source;
+      $('capture-filename').value = `${sample.name.replace(/\s*·\s*/g, '-')}.hwpx`;
+      drawCapturePreview();
+      $('capture-text').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+  samplesDrawn = true;
+}
+
+
 /**
  * 보고서 마크다운을 아주 얕게 HTML로. 표·제목·목록·굵게·코드만 본다.
  * 우리가 만든 문자열만 넣으므로 값은 언제나 escapeHtml을 거친다.
@@ -451,6 +704,7 @@ function showLane(lane) {
   document.querySelectorAll('[data-panel]').forEach((panel) => {
     panel.hidden = panel.dataset.panel !== lane;
   });
+  if (lane === 'diagram') drawDiagramSamples();
   try { localStorage.setItem(LANE_KEY, lane); } catch { /* 무시 */ }
 }
 
@@ -475,6 +729,8 @@ function init() {
   profileSelect.addEventListener('change', () => { renderMarkers(); updateStat(); });
   $('build').addEventListener('click', runBuild);
   $('capture-run').addEventListener('click', runCapture);
+  $('capture-download').addEventListener('click', downloadDiagram);
+  $('capture-preview').addEventListener('click', () => drawCapturePreview());
   document.querySelectorAll('[data-capture-sample]').forEach((button) => {
     button.addEventListener('click', () => {
       $('capture-text').value = CAPTURE_SAMPLES[button.dataset.captureSample];
@@ -506,8 +762,8 @@ function init() {
   document.querySelectorAll('[data-sample]').forEach((button) => {
     button.addEventListener('click', () => {
       bodyText.value = SAMPLES[button.dataset.sample];
-      if (button.dataset.sample === 'narrative') profileSelect.value = 'narrative';
-      else profileSelect.value = 'policy-default';
+      const forSample = { narrative: 'narrative', research: 'kihasa-research' };
+      profileSelect.value = forSample[button.dataset.sample] || 'policy-default';
       renderMarkers();
       updateStat();
       setStatus('예시를 불러왔습니다.');
