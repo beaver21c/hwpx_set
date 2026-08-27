@@ -41,6 +41,10 @@ def lint_items(items: Sequence[Dict[str, Any]], profile: Dict[str, Any],
     markers = sorted({lv["marker"] for lv in profile["levels"] if lv.get("marker")})
     auto_keys = {lv["key"] for lv in profile["levels"]
                  if str(lv.get("prefix", "")).startswith("AUTO_")}
+    #: 번호도 기호도 붙지 않는 레벨. 본문·주처럼 어느 제목 밑에나 오므로
+    #: 제목 계층(레벨 점프) 검사에서 뺀다.
+    free_keys = {lv["key"] for lv in profile["levels"]
+                 if not lv.get("marker") or not lv.get("prefix")}
     rules = profile.get("rules", {})
     min_children = rules.get("min_children") or {}
     head_patterns = {k: v for k, v in (rules.get("head_pattern") or {}).items() if v}
@@ -105,9 +109,12 @@ def lint_items(items: Sequence[Dict[str, Any]], profile: Dict[str, Any],
                     f"{text[:20]}"))
 
         # 레벨 점프(부모 없이 두 단계 이상 깊어짐)
-        if pos > 0 and depth is not None:
+        # 마커 없는 레벨(본문·주)은 계층이 아니라 어느 제목 밑에나 오므로 뺀다
+        if pos > 0 and depth is not None and key not in free_keys:
             prev_key = paras[pos - 1][1].get("key", "body")
             prev_depth = depth_of.get(prev_key)
+            if prev_key in free_keys:
+                prev_depth = None
             if prev_depth is not None and depth - prev_depth > 1:
                 issues.append(Issue(
                     "warn", line, "jump",

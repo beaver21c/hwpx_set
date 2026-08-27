@@ -208,6 +208,189 @@ export const HWPX_PROFILES = {
       "period_policy": "single_sentence_no_period"
     }
   },
+  "kihasa-research": {
+    "schema": "hwpx-studio.profile.v1",
+    "name": "연구보고서(장·절)",
+    "mode": "outline",
+    "fonts": {
+      "bold": "KoPub돋움체 Bold",
+      "light": "KoPub바탕체 Light",
+      "fallback": "KoPub바탕체 Light"
+    },
+    "page": {
+      "size": "A4",
+      "margin_mm": {
+        "left": 30,
+        "right": 30,
+        "top": 25,
+        "bottom": 25,
+        "header": 15,
+        "footer": 15
+      }
+    },
+    "levels": [
+      {
+        "key": "chapter",
+        "name": "장",
+        "marker": "#",
+        "prefix": "AUTO_CHAPTER",
+        "size_pt": 20,
+        "bold": true,
+        "font": "bold",
+        "color": "#000000",
+        "left_pt": 0,
+        "indent_pt": 0,
+        "spacing_below_pt": 18,
+        "line_spacing": 160,
+        "align": "LEFT"
+      },
+      {
+        "key": "section",
+        "name": "절",
+        "marker": "##",
+        "prefix": "AUTO_SECTION",
+        "size_pt": 16,
+        "bold": true,
+        "font": "bold",
+        "color": "#000000",
+        "left_pt": 0,
+        "indent_pt": 0,
+        "spacing_below_pt": 12,
+        "line_spacing": 160,
+        "align": "LEFT"
+      },
+      {
+        "key": "num",
+        "name": "1.",
+        "marker": "###",
+        "prefix": "AUTO_NUM",
+        "size_pt": 14,
+        "bold": true,
+        "font": "bold",
+        "color": "#000000",
+        "left_pt": 0,
+        "indent_pt": 0,
+        "spacing_below_pt": 8,
+        "line_spacing": 160,
+        "align": "LEFT"
+      },
+      {
+        "key": "hangul",
+        "name": "가.",
+        "marker": "####",
+        "prefix": "AUTO_HANGUL",
+        "size_pt": 12.5,
+        "bold": true,
+        "font": "bold",
+        "color": "#000000",
+        "left_pt": 10,
+        "indent_pt": 0,
+        "spacing_below_pt": 6,
+        "line_spacing": 160,
+        "align": "LEFT"
+      },
+      {
+        "key": "paren",
+        "name": "1)",
+        "marker": "#####",
+        "prefix": "AUTO_PAREN",
+        "size_pt": 11.5,
+        "bold": false,
+        "font": "bold",
+        "color": "#000000",
+        "left_pt": 20,
+        "indent_pt": 0,
+        "spacing_below_pt": 4,
+        "line_spacing": 160,
+        "align": "LEFT"
+      },
+      {
+        "key": "tcap",
+        "name": "표 제목",
+        "marker": "표)",
+        "prefix": "AUTO_TABLE",
+        "size_pt": 10.5,
+        "bold": true,
+        "font": "bold",
+        "color": "#000000",
+        "left_pt": 0,
+        "indent_pt": 0,
+        "spacing_below_pt": 3,
+        "line_spacing": 150,
+        "align": "LEFT"
+      },
+      {
+        "key": "fcap",
+        "name": "그림 제목",
+        "marker": "그림)",
+        "prefix": "AUTO_FIGURE",
+        "size_pt": 10.5,
+        "bold": true,
+        "font": "bold",
+        "color": "#000000",
+        "left_pt": 0,
+        "indent_pt": 0,
+        "spacing_below_pt": 3,
+        "line_spacing": 150,
+        "align": "LEFT"
+      },
+      {
+        "key": "text",
+        "name": "본문",
+        "marker": "",
+        "prefix": "",
+        "size_pt": 11,
+        "bold": false,
+        "font": "light",
+        "color": "#000000",
+        "left_pt": 0,
+        "indent_pt": 0,
+        "spacing_below_pt": 6,
+        "line_spacing": 180,
+        "align": "JUSTIFY"
+      },
+      {
+        "key": "note",
+        "name": "표·그림 주",
+        "marker": "※",
+        "prefix": "",
+        "size_pt": 9,
+        "bold": false,
+        "font": "light",
+        "color": "#000000",
+        "left_pt": 0,
+        "indent_pt": 0,
+        "spacing_below_pt": 8,
+        "line_spacing": 140,
+        "align": "LEFT"
+      }
+    ],
+    "body": {
+      "size_pt": 11,
+      "font": "light",
+      "line_spacing": 180,
+      "first_line_indent_pt": 11
+    },
+    "footnote": {
+      "name": "각주",
+      "eng_name": "Footnote",
+      "size_pt": 9,
+      "bold": false,
+      "font": "light",
+      "color": "#000000",
+      "left_pt": 0,
+      "indent_pt": 0,
+      "spacing_below_pt": 0,
+      "line_spacing": 140,
+      "align": "JUSTIFY"
+    },
+    "rules": {
+      "period_policy": "always_period",
+      "footnote_position": "before_period",
+      "min_children": {},
+      "head_pattern": {}
+    }
+  },
   "gov-3level": {
     "schema": "hwpx-studio.profile.v1",
     "name": "공문서 3레벨",

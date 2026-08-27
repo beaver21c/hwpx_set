@@ -96,7 +96,7 @@ def test_build_downloads_valid_hwpx(browser, server, tmp_path):
     import zipfile
 
     page, problems = open_page(browser, server)
-    page.click('[data-sample="outline"]')
+    page.click('[data-sample="research"]')
     page.fill("#filename", "검사용")
     with page.expect_download() as download:
         page.click("#build")

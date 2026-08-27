@@ -50,6 +50,8 @@ def parse_text(text: str, profile: Dict[str, Any]) -> ParseResult:
     profile = merge_profile(profile)
     markers = _marker_table(profile)
     fallback = [lv["key"] for lv in body_levels(profile)]
+    #: 마커가 없는 레벨 — 마커 없는 줄이 갈 제자리가 프로파일에 있는가
+    plain_home = any(not lv.get("marker") for lv in body_levels(profile))
     narrative = profile.get("mode") == "narrative"
 
     result = ParseResult()
@@ -143,9 +145,12 @@ def parse_text(text: str, profile: Dict[str, Any]) -> ParseResult:
             expanded = raw.replace("\t", "  ")
             indent = len(expanded) - len(expanded.lstrip(" "))
             depth = min(indent // 2, len(fallback) - 1)
-            result.warnings.append(
-                f"{lineno}행: 마커 없는 줄 → 들여쓰기 {indent}칸으로 "
-                f"{fallback[depth]} 레벨 적용")
+            # 프로파일에 마커 없는 레벨이 있으면 그 레벨이 본문의 제자리다.
+            # 도구가 추측한 것이 아니므로 알리지 않는다.
+            if not plain_home:
+                result.warnings.append(
+                    f"{lineno}행: 마커 없는 줄 → 들여쓰기 {indent}칸으로 "
+                    f"{fallback[depth]} 레벨 적용")
             _append(result, {"type": "para", "key": fallback[depth], "text": stripped},
                     lineno)
         i += 1

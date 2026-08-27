@@ -1176,22 +1176,32 @@ function patchHeader(xml, profile, ids, diagramFills, textKeys = []) {
   return x;
 }
 
-function autoPrefix(kind, n) {
+function autoPrefix(kind, n, chapter = 0) {
   if (kind === 'AUTO_ROMAN') return n < ROMAN.length ? `${ROMAN[n]}. ` : `${n + 1}. `;
   if (kind === 'AUTO_NUM') return `${n + 1}. `;
   if (kind === 'AUTO_ALPHA') return n < 26 ? `${String.fromCharCode(65 + n)}. ` : `${n + 1}. `;
   if (kind === 'AUTO_HANGUL') return n < HANGUL.length ? `${HANGUL[n]}. ` : `${n + 1}. `;
   if (kind === 'AUTO_CIRCLED') return n < CIRCLED.length ? `${CIRCLED[n]} ` : `${n + 1}) `;
+  if (kind === 'AUTO_CHAPTER') return `제${n + 1}장 `;   // 연구보고서 장 제목
+  if (kind === 'AUTO_SECTION') return `제${n + 1}절 `;   // 연구보고서 절 제목
+  if (kind === 'AUTO_PAREN') return `${n + 1}) `;        // 숫자에 닫는 괄호
+  if (kind === 'AUTO_TABLE') return `〈표 ${chapter}-${n + 1}〉 `;   // 장 번호를 따라간다
+  if (kind === 'AUTO_FIGURE') return `〔그림 ${chapter}-${n + 1}〕 `;
   return '';
 }
 
 function makeNumbering(profile) {
   const order = profile.levels.map((lv) => lv.key);
   const counters = new Map(order.map((k) => [k, 0]));
+  // 표·그림 번호가 따라가는 장 번호(〈표 1-1〉의 앞자리)
+  const chapterKeys = new Set(profile.levels
+    .filter((lv) => lv.prefix === 'AUTO_CHAPTER').map((lv) => lv.key));
+  let chapter = 0;
   return (key, kind) => {
     const idx = order.indexOf(key);
     const value = counters.get(key) || 0;
-    const text = autoPrefix(kind, value);
+    if (chapterKeys.has(key)) chapter = value + 1;
+    const text = autoPrefix(kind, value, chapter);
     counters.set(key, value + 1);
     order.slice(idx + 1).forEach((deeper) => counters.set(deeper, 0));
     return text;

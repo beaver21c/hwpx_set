@@ -32,8 +32,11 @@ const SKIP_SUBTREES = new Set(['footNote', 'endNote', 'caption', 'header', 'foot
 const CIRCLED_CHARS = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮';
 
 const PREFIX_PATTERNS = [
+  ['AUTO_CHAPTER', /^제\s?\d{1,2}\s?장\s/],
+  ['AUTO_SECTION', /^제\s?\d{1,2}\s?절\s/],
   ['AUTO_ROMAN', new RegExp(`^[${ROMAN_CHARS}]+[.)]\\s`)],
-  ['AUTO_NUM', /^\d{1,2}[.)]\s/],
+  ['AUTO_NUM', /^\d{1,2}\.\s/],
+  ['AUTO_PAREN', /^\d{1,2}\)\s/],
   ['AUTO_ALPHA', /^[A-Z][.)]\s/],
   ['AUTO_CIRCLED', new RegExp(`^[${CIRCLED_CHARS}]\\s?`)],
   ['AUTO_HANGUL', /^[가나다라마바사아자차카타파하][.)]\s/],

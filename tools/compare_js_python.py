@@ -42,6 +42,7 @@ CASES = [
     ("tests/fixtures/diagram_side.md", "policy-default"),
     ("tests/fixtures/diagram_strategy.md", "policy-default"),
     ("tests/fixtures/footnote.md", "policy-default"),
+    ("examples/input_research.md", "kihasa-research"),
     ("examples/input_narrative.md", "narrative"),
 ]
 

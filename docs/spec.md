@@ -151,9 +151,10 @@ hwpx-studio/
 ├── profiles/
 │   ├── policy-default.json        # 기존 생성기 값(Ⅰ./1./□/○/-/·/※ 7레벨)
 │   ├── gov-3level.json            # □/○/- 3레벨
-│   └── narrative.json             # 서술식
+│   ├── narrative.json             # 서술식
+│   └── kihasa-research.json       # 연구보고서(제N장·제N절, 장별 표·그림 번호)
 ├── templates/SKILL.template.md, prompt_snippets/
-├── examples/input_outline.md, input_narrative.md, input_diagram.md
+├── examples/input_outline.md, input_narrative.md, input_diagram.md, input_research.md
 ├── docs/
 │   ├── index.html                 # (2단계) 프로파일 편집기 → JS 변환기
 │   ├── writing-guide.md           # 본문 작성법

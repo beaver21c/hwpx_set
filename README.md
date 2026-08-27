@@ -258,6 +258,7 @@ python skills/build.py -o ~/.claude/skills      # 조립 + 설치
 | `policy-default` | Ⅰ./1./□/○/-/·/※ 7레벨 (기존 생성기와 동일 서식) |
 | `gov-3level` | Ⅰ./1./□/○/- 5레벨, 흑백 |
 | `narrative` | 서술식(제목 + 본문 문단, 첫 줄 들여쓰기) |
+| `kihasa-research` | 연구보고서 — 제N장/제N절/1./가./1), 표·그림 번호는 장을 따라감 |
 
 프로파일 JSON은 `hwpx_studio/profiles/`에 있다(설치본에 함께 들어간다). 규격: `docs/profile-spec.md`
 
