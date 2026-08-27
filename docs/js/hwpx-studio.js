@@ -425,6 +425,10 @@ function periodIssues(text, line, policy) {
 // ──────────────────────────────────────────────────────────────
 const ARROW_SPLIT = /\s*(?:→|->|=>|▶|>)\s*/;
 const MIN_BOX_WIDTH_MM = 12;
+/** DB 구성도 상자 폭. 필드 이름에 `(PK)`가 붙어 기본 상자보다 넓다 */
+const DB_BOX_WIDTH_MM = 45;
+const DB_KEY_MARKS = { '*': 'PK', '+': 'FK' };
+const DB_ENTITY = /^\[(.+?)\]\s*(\{.*\})?$/;
 
 const LINE_TYPES = {
   solid: 'SOLID', dash: 'DASH', dot: 'DOT',
@@ -498,7 +502,7 @@ export function parseDiagramBlock(header, lines) {
   }
   let type = options.type || 'org';
   delete options.type;
-  if (!['org', 'flow', 'matrix', 'strategy'].includes(type)) type = 'org';
+  if (!['org', 'flow', 'matrix', 'strategy', 'db'].includes(type)) type = 'org';
   const title = options.title || '';
   delete options.title;
   const body = lines.map((l) => l.replace(/\s+$/, ''));
@@ -549,6 +553,7 @@ export function buildGrid(spec, profile, force = false) {
   if (spec.type === 'flow') grid = gridFlow(spec, effective);
   else if (spec.type === 'matrix') grid = gridMatrix(spec, effective);
   else if (spec.type === 'strategy') grid = gridStrategy(spec, effective);
+  else if (spec.type === 'db') grid = gridDb(spec, effective);
   else if (layout.startsWith('side')) grid = gridOrgSide(spec, effective);
   else {
     grid = gridOrg(spec, effective);
@@ -955,6 +960,109 @@ function gridFlow(spec, profile) {
     }
   });
   return { rows: 1, cols: 2 * n - 1, colWidths, rowHeights: [rowH], cells, warnings, fallbackToImage: false };
+}
+
+/** DB 구성도 본문 → (테이블, 관계, 경고) (diagram.py: parse_db 이식). */
+export function parseDb(lines) {
+  const tables = [];
+  const links = [];
+  const warnings = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (ARROW_SPLIT.test(line)) {
+      const parts = line.split(ARROW_SPLIT).map((s) => s.trim()).filter(Boolean);
+      for (let i = 0; i < parts.length - 1; i += 1) links.push([parts[i], parts[i + 1]]);
+      continue;
+    }
+    const m = DB_ENTITY.exec(line);
+    if (m) {
+      const [name, attrs] = splitAttrs(`${m[1]} ${m[2] || ''}`.trim());
+      tables.push({ name, style: nodeStyle(attrs), fields: [] });
+      continue;
+    }
+    if (!tables.length) {
+      warnings.push(`테이블([이름]) 앞에 적힌 줄은 건너뛴다: ${line}`);
+      continue;
+    }
+    let [text, attrs] = splitAttrs(line);
+    const key = DB_KEY_MARKS[text.slice(0, 1)] || '';
+    if (key) text = text.slice(1).trim();
+    tables[tables.length - 1].fields.push({ text, key, style: nodeStyle(attrs) });
+  }
+  return { tables, links, warnings };
+}
+
+/** DB 구성도 (diagram.py: _grid_db 이식). */
+function gridDb(spec, profile) {
+  const dia = profile.diagram;
+  const { tables, links, warnings } = parseDb(spec.lines);
+  if (!tables.length) {
+    return { rows: 1, cols: 1, colWidths: [dia.col_width_mm], rowHeights: [dia.row_height_mm], cells: [], warnings: ['도식 내용이 비어 있음'], fallbackToImage: false };
+  }
+
+  const n = tables.length;
+  const depth = Math.max(...tables.map((t) => t.fields.length));
+  const rows = 1 + depth;
+  const maxW = Number(spec.options?.width || dia.max_width_mm);
+  const arrowW = Math.max(4, Number(dia.col_gap_mm));
+  let boxW = Math.min(DB_BOX_WIDTH_MM, (maxW - (n - 1) * arrowW) / n);
+  if (boxW < MIN_BOX_WIDTH_MM) {
+    boxW = MIN_BOX_WIDTH_MM;
+    warnings.push(`테이블이 ${n}개라 폭이 모자란다. width를 늘리거나 나눠 그리라`);
+  }
+
+  const rowH = Number(dia.row_height_mm);
+  const cells = [];
+  const colWidths = [];
+  const cell = (row, col, text, extra = {}) => ({
+    row, col, text, borders: [], fill: null, char: 'diagram', colSpan: 1, rowSpan: 1,
+    textColor: null, borderColor: null, borderType: null, ...extra,
+  });
+
+  tables.forEach((table, i) => {
+    const col = 2 * i;
+    const style = table.style;
+    cells.push(cell(0, col, table.name, {
+      borders: [...BOX_BORDERS],
+      fill: style.fill || dia.root_fill,
+      textColor: style.color || dia.root_color,
+      borderColor: style.border || null,
+    }));
+    table.fields.forEach((fld, idx) => {
+      const fstyle = fld.style;
+      cells.push(cell(idx + 1, col, fld.key ? `${fld.text} (${fld.key})` : fld.text, {
+        borders: [...BOX_BORDERS],
+        fill: fstyle.fill || (fld.key ? dia.box_fill : null),
+        textColor: fstyle.color || null,
+        borderColor: fstyle.border || null,
+      }));
+    });
+    colWidths.push(boxW);
+    if (i < n - 1) colWidths.push(arrowW);
+  });
+
+  const index = new Map(tables.map((t, i) => [t.name, i]));
+  for (const [a, b] of links) {
+    if (!index.has(a) || !index.has(b)) {
+      warnings.push(`관계 \`${a} → ${b}\`에 없는 테이블 이름이 있다`);
+      continue;
+    }
+    const left = index.get(a);
+    const right = index.get(b);
+    if (Math.abs(left - right) !== 1) {
+      warnings.push(`관계 \`${a} → ${b}\`는 두 테이블이 붙어 있지 않아 화살표를 못 그렸다`
+        + ' (테이블 순서를 바꾸면 그려진다)');
+      continue;
+    }
+    cells.push(cell(0, 2 * Math.min(left, right) + 1, left < right ? '→' : '←'));
+  }
+
+  return {
+    rows, cols: 2 * n - 1, colWidths,
+    rowHeights: new Array(rows).fill(rowH),
+    cells, warnings, fallbackToImage: false,
+  };
 }
 
 function gridMatrix(spec, profile) {

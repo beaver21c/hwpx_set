@@ -396,3 +396,96 @@ def test_strategy_reaches_the_document(policy, tmp_path):
 def test_strategy_empty_block_is_reported(policy):
     grid = build_grid(parse_block("type=strategy", []), policy)
     assert grid.warnings and not [c for c in grid.cells if c.text]
+
+
+# ──────────────────────────────────────────────────────────────
+# DB 구성도 (type=db)
+# ──────────────────────────────────────────────────────────────
+DB = """[회원]
+  *회원ID
+  이름
+[신청]
+  *신청ID
+  +회원ID
+  신청일
+[사업]
+  *사업코드
+  사업명
+회원 → 신청 → 사업"""
+
+
+def _db_grid(policy, source=DB, header="type=db"):
+    return build_grid(parse_block(header, source.splitlines()), policy)
+
+
+def test_db_lays_tables_side_by_side_with_fields_below(policy):
+    grid = _db_grid(policy)
+    assert (grid.rows, grid.cols) == (1 + 3, 2 * 3 - 1)     # 머리 1줄 + 최대 필드 3줄
+    at = {(c.row, c.col): c.text for c in grid.cells}
+    assert [at[(0, c)] for c in (0, 2, 4)] == ["회원", "신청", "사업"]
+    assert [at[(r, 2)] for r in (1, 2, 3)] == ["신청ID (PK)", "회원ID (FK)", "신청일"]
+
+
+def test_db_key_marks_become_labels_and_tint(policy):
+    grid = _db_grid(policy)
+    cells = {c.text: c for c in grid.cells if c.text}
+    assert cells["회원ID (PK)"].fill == policy["diagram"]["box_fill"]
+    assert cells["이름"].fill is None                        # 열쇠가 아닌 필드는 안 채운다
+    assert cells["회원"].fill == policy["diagram"]["root_fill"]
+
+
+def test_db_draws_arrows_only_between_neighbours(policy):
+    grid = _db_grid(policy)
+    arrows = {(c.row, c.col): c.text for c in grid.cells if c.text in ("→", "←")}
+    assert arrows == {(0, 1): "→", (0, 3): "→"}
+    assert not grid.warnings
+
+
+def test_db_reports_a_relation_it_cannot_draw(policy):
+    grid = _db_grid(policy, DB.replace("회원 → 신청 → 사업", "회원 → 사업"))
+    assert not [c for c in grid.cells if c.text in ("→", "←")]
+    assert any("붙어 있지 않아" in w for w in grid.warnings)
+
+
+def test_db_reports_an_unknown_table_name(policy):
+    grid = _db_grid(policy, DB.replace("회원 → 신청 → 사업", "회원 → 없는표"))
+    assert any("없는 테이블 이름" in w for w in grid.warnings)
+
+
+def test_db_arrow_points_back_when_written_backwards(policy):
+    grid = _db_grid(policy, DB.replace("회원 → 신청 → 사업", "신청 → 회원"))
+    assert [c.text for c in grid.cells if c.text in ("→", "←")] == ["←"]
+
+
+def test_db_keeps_node_colours(policy):
+    grid = _db_grid(policy, "[회원 {fill=#C00000 color=#FFFFFF}]\n  이름 {fill=#FFF2CC}")
+    cells = {c.text: c for c in grid.cells if c.text}
+    assert (cells["회원"].fill, cells["회원"].text_color) == ("#C00000", "#FFFFFF")
+    assert cells["이름"].fill == "#FFF2CC"
+
+
+def test_db_reaches_the_document(policy, tmp_path):
+    out = tmp_path / "db.hwpx"
+    spec = parse_block("type=db title=\"지원사업 DB\"", DB.splitlines())
+    build_document(policy, [{"type": "diagram", "spec": spec.to_dict()}], str(out))
+    with zipfile.ZipFile(str(out)) as zf:
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+    for word in ("회원", "신청ID (PK)", "회원ID (FK)", "→"):
+        assert word in section
+
+
+def test_db_empty_block_is_reported(policy):
+    grid = _db_grid(policy, "")
+    assert grid.warnings and not [c for c in grid.cells if c.text]
+
+
+def test_db_field_before_any_table_is_reported(policy):
+    grid = _db_grid(policy, "떠도는 필드\n[회원]\n  이름")
+    assert any("앞에 적힌 줄은 건너뛴다" in w for w in grid.warnings)
+    assert "떠도는 필드" not in {c.text for c in grid.cells}
+
+
+def test_db_boxes_shrink_to_fit_the_page(policy):
+    many = "\n".join(f"[표{i}]\n  값" for i in range(4))
+    grid = _db_grid(policy, many, "type=db width=100")
+    assert grid.total_width_mm <= 100.01

@@ -29,7 +29,7 @@ ARROW_RIGHT = "→"
 ARROW_DOWN = "▼"
 _ARROW_SPLIT = re.compile(r"\s*(?:→|->|=>|▶|>)\s*")
 
-VALID_TYPES = ("org", "flow", "matrix", "strategy")
+VALID_TYPES = ("org", "flow", "matrix", "strategy", "db")
 
 #: 상자·연결선에 쓸 수 있는 선 종류(OWPML LineType). 짧은 이름 → OWPML 값
 LINE_TYPES = {
@@ -296,6 +296,8 @@ class GridPlan:
 
 
 MIN_BOX_WIDTH_MM = 12.0
+#: DB 구성도 상자 폭. 필드 이름에 `(PK)`가 붙어 기본 상자보다 넓다
+DB_BOX_WIDTH_MM = 45.0
 
 
 #: 블록 헤더에서 프로파일 값을 덮어쓸 수 있는 색 항목
@@ -326,6 +328,8 @@ def build_grid(spec: DiagramSpec, profile: Dict[str, Any], force: bool = False) 
         grid = _grid_matrix(spec, profile)
     elif spec.type == "strategy":
         grid = _grid_strategy(spec, profile)
+    elif spec.type == "db":
+        grid = _grid_db(spec, profile)
     elif layout.startswith("side"):
         grid = _grid_org_side(spec, profile)
     else:
@@ -806,6 +810,114 @@ def _grid_flow(spec: DiagramSpec, profile: Dict[str, Any]) -> GridPlan:
             widths.append(arrow_w)
     return GridPlan(rows=1, cols=cols, col_widths_mm=widths,
                     row_heights_mm=[row_h], cells=cells, warnings=warnings)
+
+
+#: DB 구성도 — 필드 앞에 붙여 열쇠를 표시하는 글자
+DB_KEY_MARKS = {"*": "PK", "+": "FK"}
+
+_DB_ENTITY = re.compile(r"^\[(.+?)\]\s*(\{.*\})?$")
+
+
+def parse_db(lines: Sequence[str]) -> Tuple[List[Dict[str, Any]], List[Tuple[str, str]], List[str]]:
+    """DB 구성도 본문을 (테이블 목록, 관계 목록, 경고)로 나눈다.
+
+    테이블은 `[이름]`으로 열고, 그 아래 들여쓴 줄이 필드다. 화살표가 든 줄은
+    관계로 본다. 필드 앞의 `*`는 기본키, `+`는 외래키다.
+    """
+    tables: List[Dict[str, Any]] = []
+    links: List[Tuple[str, str]] = []
+    warnings: List[str] = []
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        if _ARROW_SPLIT.search(line):
+            parts = [p.strip() for p in _ARROW_SPLIT.split(line) if p.strip()]
+            for a, b in zip(parts, parts[1:]):
+                links.append((a, b))
+            continue
+        m = _DB_ENTITY.match(line)
+        if m:
+            name, attrs = split_attrs(f"{m.group(1)} {m.group(2) or ''}".strip())
+            tables.append({"name": name, "style": node_style(attrs), "fields": []})
+            continue
+        if not tables:
+            warnings.append(f"테이블([이름]) 앞에 적힌 줄은 건너뛴다: {line}")
+            continue
+        text, attrs = split_attrs(line)
+        mark = DB_KEY_MARKS.get(text[:1], "")
+        if mark:
+            text = text[1:].strip()
+        tables[-1]["fields"].append({"text": text, "key": mark,
+                                     "style": node_style(attrs)})
+    return tables, links, warnings
+
+
+def _grid_db(spec: DiagramSpec, profile: Dict[str, Any]) -> GridPlan:
+    """DB 구성도 — 테이블 상자를 나란히 놓고 사이를 화살표로 잇는다.
+
+    상자 하나가 한 열이다. 맨 윗 칸이 테이블 이름, 그 아래가 필드다. 관계는
+    **붙어 있는 두 테이블 사이**에만 화살표로 그린다. 떨어져 있으면 그리지
+    못했다고 알린다(순서를 바꾸면 그려진다).
+    """
+    dia = profile["diagram"]
+    tables, links, warnings = parse_db(spec.lines)
+    if not tables:
+        return GridPlan(1, 1, [float(dia["col_width_mm"])], [float(dia["row_height_mm"])],
+                        warnings=["도식 내용이 비어 있음"])
+
+    n = len(tables)
+    depth = max(len(t["fields"]) for t in tables)
+    rows = 1 + depth
+    cols = 2 * n - 1
+
+    max_w = float(spec.options.get("width") or dia["max_width_mm"])
+    arrow_w = max(4.0, float(dia["col_gap_mm"]))
+    box_w = min(DB_BOX_WIDTH_MM, (max_w - (n - 1) * arrow_w) / n)
+    if box_w < MIN_BOX_WIDTH_MM:
+        box_w = MIN_BOX_WIDTH_MM
+        warnings.append(f"테이블이 {n}개라 폭이 모자란다. width를 늘리거나 나눠 그리라")
+
+    box_borders = ("left", "right", "top", "bottom")
+    row_h = float(dia["row_height_mm"])
+    cells: List[CellPlan] = []
+    widths: List[float] = []
+
+    for i, table in enumerate(tables):
+        col = 2 * i
+        style = table["style"]
+        cells.append(CellPlan(row=0, col=col, text=table["name"], borders=box_borders,
+                              fill=style.get("fill") or dia["root_fill"],
+                              text_color=style.get("color") or dia["root_color"],
+                              border_color=style.get("border")))
+        for r, fld in enumerate(table["fields"], start=1):
+            fstyle = fld["style"]
+            text = f'{fld["text"]} ({fld["key"]})' if fld["key"] else fld["text"]
+            cells.append(CellPlan(row=r, col=col, text=text, borders=box_borders,
+                                  fill=fstyle.get("fill") or (
+                                      dia["box_fill"] if fld["key"] else None),
+                                  text_color=fstyle.get("color"),
+                                  border_color=fstyle.get("border")))
+        widths.append(box_w)
+        if i < n - 1:
+            widths.append(arrow_w)
+
+    index = {t["name"]: i for i, t in enumerate(tables)}
+    for a, b in links:
+        if a not in index or b not in index:
+            warnings.append(f"관계 `{a} → {b}`에 없는 테이블 이름이 있다")
+            continue
+        left, right = index[a], index[b]
+        if abs(left - right) != 1:
+            warnings.append(
+                f"관계 `{a} → {b}`는 두 테이블이 붙어 있지 않아 화살표를 못 그렸다"
+                " (테이블 순서를 바꾸면 그려진다)")
+            continue
+        arrow = ARROW_RIGHT if left < right else "←"
+        cells.append(CellPlan(row=0, col=2 * min(left, right) + 1, text=arrow))
+
+    return GridPlan(rows=rows, cols=cols, col_widths_mm=widths,
+                    row_heights_mm=[row_h] * rows, cells=cells, warnings=warnings)
 
 
 def _grid_matrix(spec: DiagramSpec, profile: Dict[str, Any]) -> GridPlan:

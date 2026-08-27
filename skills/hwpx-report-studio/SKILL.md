@@ -191,6 +191,7 @@ python 꾸러미/read_hwpx.py 받은문서.hwpx -o 원고.md --report 추정근�
 | `type=flow` | 절차도·흐름도 | `접수 → 검토 → 통보` 한 줄 |
 | `type=matrix` | 격자·비교표 | 파이프 표 |
 | `type=strategy` | 전략체계도(미션·비전·핵심가치·전략과제) | `단이름 \| 칸 \| 칸` 줄 |
+| `type=db` | DB 구성도·개체 관계 | `[테이블]` + 들여쓴 필드, `*`=기본키 `+`=외래키 |
 
 쓰는 법은 `reference/diagram.md`에 전부 있다. 조직도를 예로 들면:
 

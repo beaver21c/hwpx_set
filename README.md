@@ -8,7 +8,7 @@
 | | 무엇 | 언제 |
 |---|---|---|
 | ① | **양식으로 도구 만들기** — 쓰던 hwpx를 올리면 그 양식 전용 꾸러미가 나온다 | 기관 양식 그대로 써야 할 때 |
-| ② | **도식을 한글 표로** — 조직도·절차도·전략체계도를 편집 가능한 표로 | 도식을 옮길 때 |
+| ② | **도식을 한글 표로** — 조직도·매트릭스·절차도·DB구성·전략체계도를 편집 가능한 표로. 예시를 눌러 그 자리에서 한글파일까지 | 도식을 옮길 때 |
 | ③ | **서식 없는 문서를 양식에 맞추기** — 밋밋한 hwpx를 마커 원고로 되돌린다 | AI가 뽑아낸 파일을 다듬을 때 |
 | ④ | **여기서 바로 쓰기** — 마커 텍스트를 내장 서식으로 바로 문서로 | 양식을 안 가릴 때 |
 
@@ -151,7 +151,7 @@ from google.colab import files; files.download('보고서.hwpx')
 
 | 되는 것 | 안 되는 것 |
 |---|---|
-| 레벨 문단·자동 번호, 표, 조직도·절차도·매트릭스·전략체계도, 상자별 색 지정, **도식 가져오기(Mermaid·SVG)**, 본문 검사, 내장 서식 3종 | 그림 삽입, 이미지 도식(표로 대체), 기존 문서 서식 추출 |
+| 레벨 문단·자동 번호, 표, 조직도·절차도·매트릭스·전략체계도·DB구성도, 상자별 색 지정, **도식 가져오기(Mermaid·SVG)**, 본문 검사, 내장 서식 4종 | 그림 삽입, 이미지 도식(표로 대체), 기존 문서 서식 추출 |
 
 브라우저 엔진(`docs/js/hwpx-studio.js`)은 파이썬 엔진을 이식한 것이다. 두 엔진이 같은
 결과를 내는지 CI에서 매번 대조한다(`tools/compare_js_python.py`).
@@ -189,7 +189,7 @@ CI(`.github/workflows/ci.yml`)는 푸시·PR마다 Python 3.10/3.12/3.13에서 �
 hwpx-studio export-skill policy-default -o ~/.claude/skills/hwpx-report-studio --standalone
 ```
 
-- `SKILL.md` — 마커 규칙 + **도식 네 가지(조직도·절차도·격자·전략체계도)**, 색 지정,
+- `SKILL.md` — 마커 규칙 + **도식 다섯 가지(조직도·절차도·격자·전략체계도·DB구성도)**, 색 지정,
   상자가 많을 때의 배치, 기존 도식을 옮기는 방법까지
 - `scripts/build.py` — 마커 텍스트 → hwpx
 - `scripts/capture.py` — Mermaid·SVG·HTML 도식 → 도식 블록(+hwpx)
@@ -289,6 +289,8 @@ hwpx-studio extract 기준문서.hwpx -o my.json --report report.md
 | 노드별 배경색·글자색·테두리색·점선 연결선 | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
 | 상자가 많을 때 세로 목록형 자동 전환(폭이 늘지 않음) | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
 | 전략체계도(미션·비전·핵심가치·전략과제 단 배치) | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
+| DB 구성도(테이블 상자·필드·PK/FK·관계 화살표) | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
+| 웹 ② 갈래에서 도식만으로 바로 hwpx 내려받기 | 확인 (`tests/test_web_ui.py`, 브라우저) |
 | Mermaid·SVG·HTML 도식 읽기(구조·색·점선) | 확인 (`tests/test_capture.py`) |
 | 각주(쪽 아래·자동 번호·8pt 회색) | 확인 (`tests/test_footnote.py`, 표준 판독기로 재확인 + 두 엔진 대조) |
 | 각주 번호 자리 검사(붙여쓰기·마침표·인용부호·제목) | 확인 (`tests/test_footnote.py`) |
