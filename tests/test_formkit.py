@@ -22,7 +22,8 @@ from pathlib import Path
 
 import pytest
 
-from formfixtures import auto_bullet_form, plain_form
+from formfixtures import (
+    auto_bullet_form, chapter_form, plain_form, table_note_form)
 from hwpx_studio import formkit
 from hwpx_studio.export_form import BUILDER, FORM_JSON, TEMPLATE, build_bundle, pack_bundle
 
@@ -343,3 +344,132 @@ def test_marker_table_reflects_the_choice(tmp_path):
     listed = _run(bundle, "--markers", "--bullets", "hangul")
     assert listed.returncode == 0
     assert "찍히지 않는다" in listed.stdout
+
+
+# ──────────────────────────────────────────────────────────────
+# 표 번호·표 주·장 표지·쪽 설정
+# ──────────────────────────────────────────────────────────────
+def test_page_setup_is_read_and_reported():
+    """쪽 설정은 보존 구간에 있어 그대로 지켜진다. 무엇이 지켜지는지 보여 준다."""
+    result = formkit.analyze(plain_form(), "평범")
+    page = result.form["page"]
+    assert page["size"] == "A4"
+    assert page["orientation"] == "세로"
+    assert page["margin_mm"]["left"] == 20.0
+    assert "용지 A4 세로" in result.report
+
+
+def test_footnote_shape_is_read_from_the_section():
+    """각주 번호 모양·구분선은 구역 설정에 있다. 문단 스타일이 아니다."""
+    result = formkit.analyze(plain_form(), "평범")
+    shape = result.form["footnote"]["shape"]
+    assert shape["suffix_char"] == ")"
+    assert shape["number_format"] == "DIGIT"
+    assert result.form["footnote"]["size_pt"] == 8.0
+    assert result.form["footnote"]["color"] == "#808080"
+    assert "번호 모양 `n)`" in result.report
+
+
+def test_table_note_style_is_taken_out_of_the_levels():
+    """표 주는 본문 레벨이 아니다. 빼내지 않으면 ※ 마커가 겹친다."""
+    result = formkit.analyze(table_note_form(), "표주")
+    note = result.form["table_note"]
+    assert note is not None
+    assert note["name"] == "표 주"
+    assert note["marker"] == "※"
+    assert "※" not in [lv["marker"] for lv in result.form["levels"]]
+    assert any("표 주" in text for text in result.form["notes"])
+
+
+def test_ordinary_form_has_no_table_note():
+    """자리도 이름도 근거가 없으면 표 주로 보지 않는다."""
+    assert formkit.analyze(plain_form(), "평범").form["table_note"] is None
+
+
+def test_chapter_cover_is_found_in_the_preamble():
+    result = formkit.analyze(chapter_form(), "장양식")
+    chapter = result.form["chapter"]
+    assert chapter["roman"] == "Ⅱ"
+    assert chapter["title"] == "옛 장 제목"
+    assert chapter["has_container"] is True
+    assert "장 표지" in result.report
+
+
+def test_drawing_container_text_is_not_a_body_level():
+    """표지 글자를 본문으로 세면 보존 구간이 통째로 잘려 나간다."""
+    result = formkit.analyze(chapter_form(), "장양식")
+    assert not any(lv["name"] == "바탕글" for lv in result.form["levels"])
+    assert result.form["preamble_bytes"] > 3000
+
+
+def test_caption_keeps_the_chapter_roman_and_drops_the_sample_title():
+    caption = formkit.analyze(chapter_form(), "장양식").form["table"]["caption"]
+    assert caption["chapter_roman"] == "Ⅱ"
+    assert caption["before"] == "<표 Ⅱ-"
+    assert caption["after"] == "> ", "양식의 표본 제목이 새 제목 앞에 남으면 안 된다"
+
+
+def test_chapter_number_changes_cover_and_table_number(tmp_path):
+    bundle = _bundle(tmp_path, chapter_form(), "장양식")
+    (bundle / "원고.md").write_text(
+        "[장: 정책 추진 현황]\n\n□ 실적\n\n[표: 연도별 실적]\n"
+        "| 구분 | 값 |\n|---|---|\n| 합계 | 100 |\n\n", encoding="utf-8")
+    done = _run(bundle, "원고.md", "-o", "결과.hwpx", "--chapter", "4")
+    assert done.returncode == 0, done.stdout
+
+    with zipfile.ZipFile(bundle / "결과.hwpx") as z:
+        section = z.read("Contents/section0.xml").decode("utf-8")
+    assert "<hp:t>Ⅳ</hp:t>" in section, "표지 로마자가 바뀌어야 한다"
+    assert "<hp:t>Ⅳ. 정책 추진 현황</hp:t>" in section
+    assert "&lt;표 Ⅳ-" in section, "표 번호 접두도 같이 바뀌어야 한다"
+    assert "&gt; 연도별 실적" in section
+    assert "옛 표 제목" not in section
+
+
+def test_table_note_lands_in_its_own_style(tmp_path):
+    bundle = _bundle(tmp_path, table_note_form(), "표주")
+    (bundle / "원고.md").write_text(
+        "□ 실적\n\n| 구분 | 값 |\n|---|---|\n| 합계 | 100 |\n"
+        "※ 자료：통계청(2025).\n\n", encoding="utf-8")
+    done = _run(bundle, "원고.md", "-o", "결과.hwpx")
+    assert done.returncode == 0, done.stdout
+    assert "표 뒤에 빈 줄이 없다" not in done.stdout, "표 주는 표에 딸린 줄이다"
+
+    form = json.loads((bundle / FORM_JSON).read_text(encoding="utf-8"))
+    with zipfile.ZipFile(bundle / "결과.hwpx") as z:
+        section = z.read("Contents/section0.xml").decode("utf-8")
+    note_style = form["table_note"]["style"]
+    assert re.search(rf'styleIDRef="{note_style}"[^>]*>.*?자료：통계청', section, re.S)
+
+
+def test_table_note_away_from_a_table_is_reported(tmp_path):
+    bundle = _bundle(tmp_path, table_note_form(), "표주")
+    (bundle / "원고.md").write_text("□ 표가 없는데 자료 줄\n※ 자료：어디에도 안 붙는다\n",
+                                    encoding="utf-8")
+    done = _run(bundle, "원고.md", "--check-only")
+    assert "표 바로 아래에 두는 줄" in done.stdout
+
+
+def test_caption_without_a_place_in_the_form_is_reported(tmp_path):
+    """캡션 자리가 없는 양식에서 [표: …]를 쓰면 조용히 버리지 않는다."""
+    bundle = _bundle(tmp_path, plain_form(), "평범")
+    (bundle / "원고.md").write_text(
+        "□ 실적\n\n[표: 넣을 데가 없는 제목]\n| 구분 | 값 |\n|---|---|\n| 합계 | 100 |\n\n",
+        encoding="utf-8")
+    done = _run(bundle, "원고.md", "--check-only")
+    assert "표 제목(캡션) 자리가 없어" in done.stdout
+
+
+def test_chapter_directive_without_a_cover_is_reported(tmp_path):
+    bundle = _bundle(tmp_path, plain_form(), "평범")
+    (bundle / "원고.md").write_text("[장: 없는 표지]\n\n□ 내용\n", encoding="utf-8")
+    done = _run(bundle, "원고.md", "--check-only")
+    assert "장 표지가 없다" in done.stdout
+
+
+def test_chapter_number_out_of_range_stops(tmp_path):
+    bundle = _bundle(tmp_path, chapter_form(), "장양식")
+    (bundle / "원고.md").write_text("□ 내용\n", encoding="utf-8")
+    done = _run(bundle, "원고.md", "-o", "결과.hwpx", "--chapter", "99")
+    assert done.returncode != 0
+    assert "1~12" in done.stdout + done.stderr

@@ -215,12 +215,15 @@ def same_value(left, right, path: str, diffs: list) -> None:
 def compare_forms(failures: list, tmp_path: Path) -> None:
     """양식 해부도 두 엔진이 같은 form.json을 내야 한다."""
     sys.path.insert(0, str(ROOT / "tests"))
-    from formfixtures import auto_bullet_form, plain_form   # noqa: PLC0415
+    from formfixtures import (                              # noqa: PLC0415
+        auto_bullet_form, chapter_form, plain_form, table_note_form)
 
     from hwpx_studio.formkit import analyze                 # noqa: PLC0415
 
     for label, maker in (("기호가 텍스트에 든 양식", plain_form),
-                         ("한글이 기호를 붙이는 양식", auto_bullet_form)):
+                         ("한글이 기호를 붙이는 양식", auto_bullet_form),
+                         ("표 주가 있는 양식", table_note_form),
+                         ("장 표지·표 번호가 있는 양식", chapter_form)):
         path = tmp_path / f"form_{len(label)}.hwpx"
         path.write_bytes(maker())
         # 글머리표 담당을 고르는 세 갈래 모두에서 같아야 한다

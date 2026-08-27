@@ -91,6 +91,80 @@ def without_symbols(data: bytes) -> bytes:
     return _zip(parts)
 
 
+TABLE_NOTE_SAMPLE = """# 사업 추진 현황
+## 추진 개요
+□ 추진 배경 및 목적
+○ 제도 개선 요구가 이어져 개선 방안을 마련
+
+| 구분 | 2024년 | 2025년 |
+|---|---|---|
+| 처리 건수 | 1,204건 | 1,388건 |
+※ 자료：통계청(2025), 「행정통계」.
+
+□ 두 번째 표
+○ 아래에도 자료 줄이 붙는다
+
+| 구분 | 값 |
+|---|---|
+| 합계 | 100 |
+※ 자료：보건복지부(2025).
+"""
+
+
+def table_note_form(text: str = TABLE_NOTE_SAMPLE) -> bytes:
+    """표 바로 아래에 '자료：…' 줄이 붙는 양식.
+
+    `참고` 스타일의 이름을 `표 주`로 바꿔, 이름으로도 자리로도 알아볼 수 있게 한다.
+    """
+    parts = _unzip(plain_form(text))
+    header = parts["Contents/header.xml"].decode("utf-8")
+    header = header.replace('name="참고" engName="L5"', 'name="표 주" engName="TableNote"')
+    parts["Contents/header.xml"] = header.encode("utf-8")
+    return _zip(parts)
+
+
+#: 장 표지 흉내. 진짜 한글 표지는 그림 상자와 표로 되어 있지만, 여기서는 바꿔치기
+#: 로직(로마자·'Ⅱ. 제목' 찾기)을 시험할 만큼만 둔다.
+_CHAPTER_COVER = (
+    '<hp:p id="0" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" '
+    'merged="0"><hp:run charPrIDRef="0">'
+    '<hp:container><hp:t>Ⅱ</hp:t>'
+    '<hp:t>Ⅱ. 옛 장 제목</hp:t></hp:container></hp:run></hp:p>'
+)
+
+#: 표 캡션 흉내. `<표 Ⅱ-` + 자동 표번호 + `> 제목`
+_CAPTION = (
+    '<hp:caption side="TOP" fullSz="0" width="8504" gap="850" lastWidth="39456">'
+    '<hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="TOP" '
+    'linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" '
+    'hasTextRef="0" hasNumRef="0">'
+    '<hp:p id="0" paraPrIDRef="27" styleIDRef="8" pageBreak="0" columnBreak="0" '
+    'merged="0"><hp:run charPrIDRef="14"><hp:t>&lt;표 Ⅱ-</hp:t>'
+    '<hp:ctrl><hp:autoNum num="1" numType="TABLE">'
+    '<hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar="" '
+    'supscript="0"/></hp:autoNum></hp:ctrl>'
+    '<hp:t>&gt; 옛 표 제목</hp:t></hp:run></hp:p></hp:subList></hp:caption>'
+)
+
+
+def chapter_form(text: str = SAMPLE) -> bytes:
+    """장 표지와 표 번호(`<표 Ⅱ-n>`)가 있는 양식.
+
+    올려 받은 `build_yangsik2.py`가 다루던 양식의 성질을 흉내 낸 것이다.
+    **손으로 꾸민 표본**이라 한글에서 여는 것까지 보장하지 않는다. 여기서 시험하는
+    것은 장 번호·표 번호를 바꿔 넣는 로직이다.
+    """
+    parts = _unzip(plain_form(text))
+    section = parts["Contents/section0.xml"].decode("utf-8")
+    # 표지는 본문 스타일이 아니라 보존 구간에 남는다(styleIDRef="0")
+    first_body = re.search(r'<hp:p [^>]*styleIDRef="[1-7]"', section)
+    cut = first_body.start() if first_body else len(section)
+    section = section[:cut] + _CHAPTER_COVER + section[cut:]
+    section = section.replace('<hp:inMargin ', _CAPTION + '<hp:inMargin ', 1)
+    parts["Contents/section0.xml"] = section.encode("utf-8")
+    return _zip(parts)
+
+
 def _patch_header(header: str) -> str:
     items = "".join(_BULLET_ITEM.format(id=i + 1, char=char)
                     for i, (_name, _pp, char) in enumerate(_BULLET_LEVELS))

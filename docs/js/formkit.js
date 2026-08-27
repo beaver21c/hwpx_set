@@ -25,9 +25,10 @@ export const FALLBACK_MARKERS = '□○-·※▪◇▶';
 export const BULLET_SOURCES = ['auto', 'hangul', 'text'];
 
 const LAYOUT_TABLE_MAX_CELLS = 3;
-const SKIP_SUBTREES = new Set(['footNote', 'endNote', 'caption', 'header', 'footer']);
 
 const ROMAN_CHARS = 'ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ';
+const SKIP_SUBTREES = new Set(['footNote', 'endNote', 'caption', 'header', 'footer']);
+
 const CIRCLED_CHARS = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮';
 
 const PREFIX_PATTERNS = [
@@ -44,10 +45,21 @@ const KEY_BY_MARKER = {
   '◇': 'diamond', '◆': 'diamond', '▶': 'arrow',
 };
 
-const PT = 100;   // 1pt = 100 HWPUNIT
+const PT = 100;      // 1pt = 100 HWPUNIT
+const MM = 283.47;   // 1mm ≈ 283.47 HWPUNIT
+
+//: 흔한 용지 [이름, 너비 mm, 높이 mm]
+const PAPERS = [['A4', 210, 297], ['B5', 182, 257], ['A5', 148, 210],
+  ['A3', 297, 420], ['B4', 257, 364], ['Letter', 216, 279]];
+
+//: 표 주 스타일에 흔히 붙는 이름
+const TABLE_NOTE_NAMES = ['표 주', '표주', '자료', '출처', '주석', '표 자료'];
 
 
 const round2 = (value) => Math.round(value * 100) / 100;
+
+/** 11.0 대신 11로 적는다. 파이썬 쪽 표기와 같아야 한다. */
+const pt = (value) => String(Number(value));
 
 // ──────────────────────────────────────────────────────────────
 // header.xml 읽기
@@ -178,6 +190,7 @@ export function topLevelParagraphs(section) {
 /** 본문 문단 목록. 각주·캡션·머리말은 빼고, 표 안은 in_table로 표시한다. */
 export function paragraphRecords(section) {
   const records = [];
+  let justAfterTable = false;
   const openParas = [];        // 열려 있는 hp:p들
   const stack = [];            // 태그 이름 스택
   let skipDepth = 0;
@@ -211,11 +224,13 @@ export function paragraphRecords(section) {
         const rows = block ? (block.inner.match(/<hp:tr>/g) || []).length : 0;
         const cells = block ? (block.inner.match(/<hp:tc\b/g) || []).length : 0;
         if (rows > 1 || cells > LAYOUT_TABLE_MAX_CELLS) dataTableDepth = tableDepth;
+        if (tableDepth === 1) justAfterTable = true;
         for (const para of openParas) para.hasObject = true;
       }
       continue;
     }
-    if (name === 'pic' && !close) {
+    if ((name === 'pic' || name === 'container') && !close) {
+      // 그리기 개체 안 글자는 본문이 아니라 도형의 글자다. 장 표지가 그렇게 되어 있다.
       for (const para of openParas) para.hasObject = true;
       continue;
     }
@@ -227,13 +242,20 @@ export function paragraphRecords(section) {
         stack.pop();
         if (para && !para.hasObject) {
           const body = text(para.bodyStart, token.start);
-          records.push({
+          const record = {
             style: num(para.attrs, 'styleIDRef'),
             para: num(para.attrs, 'paraPrIDRef'),
             char: para.char === null ? 0 : para.char,
             text: body.trim().slice(0, 80),
             in_table: para.inTable,
-          });
+            after_table: false,
+          };
+          records.push(record);
+          if (record.text) {
+            // 빈 문단은 표와 주 사이의 간격일 뿐이라 표시를 먹지 않는다
+            record.after_table = justAfterTable;
+            justAfterTable = false;
+          }
         }
         cursor = token.end;
       } else {
@@ -266,6 +288,84 @@ export function preambleCut(section, bodyStyles) {
 }
 
 // ──────────────────────────────────────────────────────────────
+// 쪽 설정·각주 모양·장 표지
+// ──────────────────────────────────────────────────────────────
+function paperName(widthMm, heightMm) {
+  for (const [name, w, h] of PAPERS) {
+    if ((Math.abs(widthMm - w) <= 2 && Math.abs(heightMm - h) <= 2)
+      || (Math.abs(widthMm - h) <= 2 && Math.abs(heightMm - w) <= 2)) return name;
+  }
+  return `${widthMm}×${heightMm}mm`;
+}
+
+const round1 = (value) => Math.round(value * 10) / 10;
+
+export function pageSetup(section) {
+  const page = /<hp:pagePr\b([^>]*)>/.exec(section);
+  const margin = /<hp:margin\b([^>]*)\/>/.exec(section);
+  const width = page ? num(page[1], 'width', 59528) : 59528;
+  const height = page ? num(page[1], 'height', 84186) : 84186;
+  const side = (name) => {
+    if (!margin) return 0;
+    const m = new RegExp(`${name}="(-?\\d+)"`).exec(margin[1]);
+    return m ? round1(Number.parseInt(m[1], 10) / MM) : 0;
+  };
+  const margins = {};
+  for (const name of ['left', 'right', 'top', 'bottom', 'header', 'footer']) {
+    margins[name] = side(name);
+  }
+  return {
+    size: paperName(round1(width / MM), round1(height / MM)),
+    width,
+    height,
+    orientation: width > height ? '가로' : '세로',
+    margin_mm: margins,
+    has_header: section.includes('<hp:header'),
+    has_footer: section.includes('<hp:footer'),
+    has_page_number: section.includes('<hp:pageNum'),
+  };
+}
+
+const attrOf = (match, name, fallback = '') => {
+  if (!match) return fallback;
+  const found = new RegExp(`${name}="([^"]*)"`).exec(match[1]);
+  return found ? found[1] : fallback;
+};
+
+export function footnoteShape(section) {
+  const block = /<hp:footNotePr\b[\s\S]*?<\/hp:footNotePr>/.exec(section);
+  if (!block) return null;
+  const body = block[0];
+  const fmt = /<hp:autoNumFormat\b([^>]*)\/>/.exec(body);
+  const line = /<hp:noteLine\b([^>]*)\/>/.exec(body);
+  const numbering = /<hp:numbering\b([^>]*)\/>/.exec(body);
+  const place = /<hp:placement\b([^>]*)\/>/.exec(body);
+  return {
+    number_format: attrOf(fmt, 'type', 'DIGIT'),
+    prefix_char: attrOf(fmt, 'prefixChar', ''),
+    suffix_char: attrOf(fmt, 'suffixChar', ''),
+    superscript: ['1', 'true'].includes(attrOf(fmt, 'supscript', '0')),
+    line_type: attrOf(line, 'type', 'SOLID'),
+    line_length: attrOf(line, 'length', '-1'),
+    line_color: attrOf(line, 'color', '#000000'),
+    restart: attrOf(numbering, 'type', 'CONTINUOUS'),
+    place: attrOf(place, 'place', ''),
+  };
+}
+
+export function chapterCover(preamble) {
+  const alone = new RegExp(`<hp:t>([${ROMAN_CHARS}])</hp:t>`).exec(preamble);
+  const titled = new RegExp(`<hp:t>([${ROMAN_CHARS}])\\.\\s*([^<]*)</hp:t>`).exec(preamble);
+  if (!alone && !titled) return null;
+  return {
+    roman: (alone || titled)[1],
+    title: titled ? titled[2].trim() : null,
+    has_container: preamble.includes('<hp:container'),
+    title_in_text: Boolean(titled),
+  };
+}
+
+// ──────────────────────────────────────────────────────────────
 // 표 골격
 // ──────────────────────────────────────────────────────────────
 function firstDataTable(section) {
@@ -291,6 +391,12 @@ function commonest(values, fallback) {
   return Number.parseInt(best, 10);
 }
 
+/** `> 옛 표 제목` → `> `. 번호 뒤에 오는 구분 기호만 남긴다. */
+function captionTail(text) {
+  const head = /^([^\w가-힣]*\s*)/.exec(text);
+  return head ? head[1] : '';
+}
+
 function captionShape(tableXml) {
   const block = /<hp:caption\b[\s\S]*?<\/hp:caption>/.exec(tableXml);
   if (!block) return null;
@@ -301,8 +407,11 @@ function captionShape(tableXml) {
   const texts = [...cap.matchAll(/<hp:t>([\s\S]*?)<\/hp:t>/g)].map((m) => unescapeXml(m[1]));
   const auto = /<hp:autoNum\b[^>]*numType="(\w+)"/.exec(cap);
   const fmt = /<hp:autoNumFormat\b[^>]*\/>/.exec(cap);
+  const before = texts.length ? texts[0] : '';
+  const roman = new RegExp(`[${ROMAN_CHARS}]`).exec(before);
   return {
     side: attr(open ? open[1] : '', 'side', 'TOP'),
+    chapter_roman: roman ? roman[0] : null,
     width: num(open ? open[1] : '', 'width', 8504),
     gap: num(open ? open[1] : '', 'gap', 850),
     style: p ? num(p[1], 'styleIDRef') : 0,
@@ -310,8 +419,10 @@ function captionShape(tableXml) {
     char: char ? Number.parseInt(char[1], 10) : 0,
     auto_num: auto ? auto[1] : null,
     auto_num_format: fmt ? fmt[0] : null,
-    before: texts.length ? texts[0] : '',
-    after: texts.length > 1 ? texts[1] : '',
+    // 양식에 들어 있던 표본 제목("> 옛 제목")은 버리고 구분 기호만 남긴다
+    before: auto ? before : '',
+    after: (auto && texts.length > 1) ? captionTail(texts[1]) : '',
+    sample: texts.length ? texts[texts.length - 1].trim() : '',
   };
 }
 
@@ -422,6 +533,42 @@ function levelKey(marker, index, used) {
   let n = 2;
   while (used.includes(key)) { key = `${base}${n}`; n += 1; }
   return key;
+}
+
+/** 표 바로 아래 '자료：…' 줄의 레벨을 골라 낸다. 본문 레벨에서는 빼낸다. */
+export function pickTableNote(levels, records, notes) {
+  const after = new Map();
+  const total = new Map();
+  for (const rec of records) {
+    if (rec.in_table || !rec.text) continue;
+    const key = `${rec.style}|${rec.para}|${rec.char}`;
+    total.set(key, (total.get(key) || 0) + 1);
+    if (rec.after_table) after.set(key, (after.get(key) || 0) + 1);
+  }
+
+  let best = null;
+  let reason = '';
+  for (const level of levels) {
+    // 제목은 표 주가 아니다(prefix에는 기호도 담기므로 번호 유형만 본다)
+    if (HEADING_MARKERS.includes(level.marker) || level.auto_number
+      || (level.prefix || '').startsWith('AUTO_')) continue;
+    const key = `${level.style}|${level.para}|${level.char}`;
+    const seen = total.get(key) || 0;
+    const hits = after.get(key) || 0;
+    const byName = TABLE_NOTE_NAMES.some((name) => level.name.includes(name));
+    const byPlace = seen >= 2 && hits === seen;
+    if (!byName && !byPlace) continue;
+    const bestHits = best ? (after.get(`${best.style}|${best.para}|${best.char}`) || 0) : -1;
+    if (hits > bestHits || best === null) {
+      best = level;
+      reason = byName ? '스타일 이름' : `표 바로 뒤에 ${hits}/${seen}번 나옴`;
+    }
+  }
+  if (best === null) return null;
+  levels.splice(levels.indexOf(best), 1);
+  notes.push(`'${best.name}' 레벨을 **표 주**로 본다(${reason}). `
+    + `\`${best.marker || '※'} 자료：…\`처럼 표 바로 아래에 쓴다`);
+  return best;
 }
 
 function guessLevels(records, styleMap, paraMap, charMap, headingMap,
@@ -613,13 +760,24 @@ export function analyzeParts(parts, name = '양식', bullets = 'auto') {
   if (!guesses.length) {
     notes.push('본문 문단을 하나도 찾지 못했다 → 내용이 든 양식 파일인지 확인할 것');
   }
-  applyBulletSource(guesses, bullets, notes);
 
-  const cut = preambleCut(section, guesses.map((g) => g.style));
+  const tableNote = pickTableNote(guesses, records, notes);
+  applyBulletSource(guesses, bullets, notes);
+  const bodyStyles = guesses.map((g) => g.style);
+  if (tableNote) bodyStyles.push(tableNote.style);
+  const cut = preambleCut(section, bodyStyles);
   const table = tableSkeleton(section, notes);
   const footnoteStyle = pickStyleByName(styleMap, ['각주', 'Footnote']);
   if (footnoteStyle === null) {
     notes.push("각주 스타일(이름 '각주')이 없다 → 각주를 쓰면 한글에서 서식이 흐트러질 수 있다");
+  }
+
+  const page = pageSetup(section);
+  const noteShape = footnoteShape(section);
+  const chapter = chapterCover(section.slice(0, cut));
+  if (chapter && !chapter.title_in_text) {
+    notes.push("장 표지에 로마자는 있으나 'Ⅱ. 제목' 꼴 제목을 찾지 못했다 "
+      + '→ [장: 제목]으로는 번호만 바뀐다');
   }
 
   const base = styleMap[0] || { para_pr: 0, char_pr: 0 };
@@ -641,10 +799,24 @@ export function analyzeParts(parts, name = '양식', bullets = 'auto') {
     blank,
     table_wrap: tableWrapShape(section) || blank,
     table,
+    page,
+    chapter,
+    table_note: tableNote === null ? null : {
+      key: tableNote.key,
+      marker: tableNote.marker || '※',
+      name: tableNote.name,
+      style: tableNote.style,
+      para: tableNote.para,
+      char: tableNote.char,
+      write_marker: levelDict(tableNote).write_marker,
+    },
     footnote: footnoteStyle === null ? null : {
       style: footnoteStyle,
       para: styleMap[footnoteStyle].para_pr,
       char: styleMap[footnoteStyle].char_pr,
+      size_pt: (chars[styleMap[footnoteStyle].char_pr] || {}).size_pt,
+      color: (chars[styleMap[footnoteStyle].char_pr] || {}).color,
+      shape: noteShape,
     },
     fonts,
     notes,
@@ -684,11 +856,56 @@ export function renderFormReport(form, levels) {
   if (table.guessed) out.push('- **표를 찾지 못해 기본값이다.** 표를 쓸 양식이면 손으로 맞출 것');
   out.push(`- 캡션: ${table.caption ? `있음 (${table.caption.before || ''}…)` : '없음'}`);
 
+  const page = form.page || {};
+  const margin = page.margin_mm || {};
+  out.push('', '## 쪽 설정 (그대로 지켜진다)', '',
+    `- 용지 ${page.size || '?'} ${page.orientation || ''}`,
+    `- 여백(mm): 위 ${margin.top || 0} · 아래 ${margin.bottom || 0} · `
+    + `왼 ${margin.left || 0} · 오른 ${margin.right || 0} · `
+    + `머리말 ${margin.header || 0} · 꼬리말 ${margin.footer || 0}`);
+  const marks = [['머리말', page.has_header], ['꼬리말', page.has_footer],
+    ['쪽 번호', page.has_page_number]].filter(([, on]) => on).map(([name]) => name);
+  out.push(marks.length ? `- ${marks.join(', ')}이(가) 있다`
+    : '- 머리말·꼬리말·쪽 번호는 없다');
+
+  const note = form.table_note;
+  const chapter = form.chapter;
+  if (note || chapter) {
+    out.push('', '## 그 밖의 자리', '');
+    if (note) {
+      out.push(`- **표 주**: \`${note.marker} 자료：…\`를 표 바로 아래에 쓰면 `
+        + `'${note.name}' 스타일이 붙는다`);
+    }
+    if (chapter) {
+      out.push(`- **장 표지**: 지금 \`${chapter.roman}`
+        + (chapter.title ? `. ${chapter.title}\`` : '\`')
+        + '. `[장: 제목]`과 `--chapter N`으로 바꾼다');
+    }
+  }
+  const caption = (form.table || {}).caption || {};
+  if (caption.auto_num) {
+    const shape = `${caption.before || ''}n${caption.after || ''}`;
+    out.push(`- **표 번호**: \`${shape.trim()}\` 꼴로 한글이 매긴다`
+      + (caption.chapter_roman ? ` (장 번호 ${caption.chapter_roman})` : ''));
+  }
+
+  const footnote = form.footnote || null;
+  if (footnote) {
+    const shape = footnote.shape || {};
+    out.push('', '## 각주', '',
+      `- 스타일 ${footnote.style}번 · ${pt(footnote.size_pt || 0)}pt · `
+      + `${footnote.color || '?'}`,
+      `- 번호 모양 \`${shape.prefix_char || ''}n${shape.suffix_char || ''}\` `
+      + `(${shape.number_format || 'DIGIT'})`
+      + (shape.superscript ? ', 위 첨자' : ''),
+      `- 구분선 ${shape.line_type || '?'} ${shape.line_color || ''}`
+      + `, 번호 매김 ${shape.restart || '?'}`);
+  }
+
   out.push('', '## 보존 구간', '',
     `- \`${form.section}\`의 앞 ${form.preamble_bytes}바이트(용지 설정·표지·머리글)를 `
     + '그대로 두고 그 뒤 본문만 갈아 끼운다',
     `- \`${form.header}\`는 **손대지 않는다.** 자동 글머리표·번호매기기·글꼴이 그대로 산다`);
-  if (form.footnote) out.push(`- 각주 스타일 ${form.footnote.style}번을 찾았다`);
   if (form.fonts.length) out.push('', '## 쓰인 글꼴', '', form.fonts.join(', '));
   if (form.notes.length) {
     out.push('', '## 살펴볼 것', '', ...form.notes.map((n) => `- ${n}`));

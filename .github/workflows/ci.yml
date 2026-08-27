@@ -66,6 +66,9 @@ jobs:
           python out/양식꾸러미/build_form.py out/양식꾸러미/예시.md -o out/양식보존_예제.hwpx
           python out/양식꾸러미/read_hwpx.py out/개조식_예제.hwpx \
             -o out/되돌린_원고.md --report out/되돌리기_근거.md
+          # 장 번호를 바꿔도 서식이 지켜지는지(표 번호 접두가 함께 바뀐다)
+          python out/양식꾸러미/build_form.py out/양식꾸러미/예시.md \
+            -o out/양식보존_3장.hwpx --chapter 3
           python - <<'CHECK'
           import zipfile
           a = zipfile.ZipFile("out/개조식_예제.hwpx")

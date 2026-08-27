@@ -32,7 +32,7 @@ from .extractor import (
     _styles,
     guess_prefix,
 )
-from .units import PT
+from .units import MM, PT
 
 SCHEMA_ID = "hwpx-studio/form@1"
 
@@ -208,6 +208,7 @@ class ParaRecord:
     text: str
     in_table: bool
     index: int
+    after_table: bool = False      # 바로 앞 형제가 표였나(표 주를 가려내는 근거)
 
 
 def _paragraph_records(section_xml: str) -> List[ParaRecord]:
@@ -234,16 +235,27 @@ def _paragraph_records(section_xml: str) -> List[ParaRecord]:
         ))
 
     def walk(node, in_table: bool) -> None:
+        just_after_table = False       # 형제 순서에서 바로 앞이 표였나
         for child in node:
             tag = child.tag.split("}")[-1]
             if tag in _SKIP_SUBTREES:
                 # 각주·미주 본문, 표 캡션, 머리말·꼬리말은 본문 레벨이 아니다
                 continue
             if tag == "p":
-                has_obj = (child.find(f".//{{{NS['hp']}}}tbl") is not None
-                           or child.find(f".//{{{NS['hp']}}}pic") is not None)
+                has_table = child.find(f".//{{{NS['hp']}}}tbl") is not None
+                # 그리기 개체(container) 안 글자는 본문이 아니라 도형의 글자다.
+                # 장 표지가 그렇게 만들어져 있어, 세면 보존 구간이 잘려 나간다.
+                has_obj = (has_table
+                           or child.find(f".//{{{NS['hp']}}}pic") is not None
+                           or child.find(f".//{{{NS['hp']}}}container") is not None)
                 if not has_obj:
                     record(child, in_table)
+                    if records and records[-1].text:
+                        # 빈 문단은 표와 주 사이의 간격일 뿐이라 표시를 먹지 않는다
+                        records[-1].after_table = just_after_table
+                        just_after_table = False
+                elif has_table:
+                    just_after_table = True
                 walk(child, in_table)
             elif tag == "tbl":
                 rows = child.findall(f"{{{NS['hp']}}}tr")
@@ -256,6 +268,97 @@ def _paragraph_records(section_xml: str) -> List[ParaRecord]:
 
     walk(root, False)
     return records
+
+
+# ──────────────────────────────────────────────────────────────
+# 쪽 설정·각주 모양·장 표지
+# ──────────────────────────────────────────────────────────────
+#: 흔한 용지. (이름, 너비 mm, 높이 mm)
+_PAPERS = [("A4", 210, 297), ("B5", 182, 257), ("A5", 148, 210),
+           ("A3", 297, 420), ("B4", 257, 364), ("Letter", 216, 279)]
+
+
+def _paper_name(width_mm: float, height_mm: float) -> str:
+    """가로·세로를 흔한 용지 이름으로. 못 맞추면 치수를 그대로 적는다."""
+    for name, w, h in _PAPERS:
+        if (abs(width_mm - w) <= 2 and abs(height_mm - h) <= 2) or \
+           (abs(width_mm - h) <= 2 and abs(height_mm - w) <= 2):
+            return name
+    return f"{width_mm:g}×{height_mm:g}mm"
+
+
+def _page_setup(section_xml: str) -> Dict[str, Any]:
+    """용지·여백·머리말. 이 값들은 보존 구간에 들어 있어 그대로 지켜진다."""
+    page = re.search(r"<hp:pagePr\b([^>]*)>", section_xml)
+    margin = re.search(r"<hp:margin\b([^>]*)/>", section_xml)
+    width = int(_attr(page.group(), "hp:pagePr", "width", "59528")) if page else 59528
+    height = int(_attr(page.group(), "hp:pagePr", "height", "84186")) if page else 84186
+
+    def side(name: str) -> float:
+        if not margin:
+            return 0.0
+        m = re.search(rf'{name}="(-?\d+)"', margin.group(1))
+        return round(int(m.group(1)) / MM, 1) if m else 0.0
+
+    return {
+        "size": _paper_name(round(width / MM, 1), round(height / MM, 1)),
+        "width": width,
+        "height": height,
+        "orientation": "가로" if width > height else "세로",
+        "margin_mm": {name: side(name) for name in
+                      ("left", "right", "top", "bottom", "header", "footer")},
+        "has_header": "<hp:header" in section_xml,
+        "has_footer": "<hp:footer" in section_xml,
+        "has_page_number": "<hp:pageNum" in section_xml,
+    }
+
+
+def _footnote_shape(section_xml: str) -> Optional[Dict[str, Any]]:
+    """각주 번호 모양과 구분선. 구역 설정(`footNotePr`)에 들어 있다."""
+    block = re.search(r"<hp:footNotePr\b.*?</hp:footNotePr>", section_xml, re.S)
+    if not block:
+        return None
+    body = block.group()
+    fmt = re.search(r"<hp:autoNumFormat\b([^>]*)/>", body)
+    line = re.search(r"<hp:noteLine\b([^>]*)/>", body)
+    numbering = re.search(r"<hp:numbering\b([^>]*)/>", body)
+    place = re.search(r"<hp:placement\b([^>]*)/>", body)
+    return {
+        "number_format": attrof(fmt, "type", "DIGIT"),
+        "prefix_char": attrof(fmt, "prefixChar", ""),
+        "suffix_char": attrof(fmt, "suffixChar", ""),
+        "superscript": attrof(fmt, "supscript", "0") in ("1", "true"),
+        "line_type": attrof(line, "type", "SOLID"),
+        "line_length": attrof(line, "length", "-1"),
+        "line_color": attrof(line, "color", "#000000"),
+        "restart": attrof(numbering, "type", "CONTINUOUS"),
+        "place": attrof(place, "place", ""),
+    }
+
+
+def attrof(match: "Optional[re.Match[str]]", name: str, fallback: str = "") -> str:
+    if not match:
+        return fallback
+    found = re.search(rf'{name}="([^"]*)"', match.group(1))
+    return found.group(1) if found else fallback
+
+
+#: 장 번호로 쓰는 로마자
+ROMAN_CHARS = "ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩⅪⅫ"
+
+
+def _chapter_cover(preamble: str) -> Optional[Dict[str, Any]]:
+    """장 표지(보존 구간 안). 로마자와 'Ⅱ. 제목' 꼴 제목을 찾는다."""
+    alone = re.search(rf"<hp:t>([{ROMAN_CHARS}])</hp:t>", preamble)
+    titled = re.search(rf"<hp:t>([{ROMAN_CHARS}])\.\s*([^<]*)</hp:t>", preamble)
+    if not alone and not titled:
+        return None
+    return {
+        "roman": (alone or titled).group(1),
+        "title": titled.group(2).strip() if titled else None,
+        "has_container": "<hp:container" in preamble,
+        "title_in_text": bool(titled),
+    }
 
 
 # ──────────────────────────────────────────────────────────────
@@ -373,8 +476,11 @@ def _caption_shape(table_xml: str) -> Optional[Dict[str, Any]]:
     texts = re.findall(r"<hp:t>([^<]*)</hp:t>", cap)
     auto = re.search(r'<hp:autoNum\b[^>]*numType="(\w+)"', cap)
     fmt = re.search(r"<hp:autoNumFormat\b[^>]*>", cap)
+    before = _unescape(texts[0]) if texts else ""
+    roman = re.search(rf"[{ROMAN_CHARS}]", before)
     return {
         "side": _attr(cap, "hp:caption", "side", "TOP"),
+        "chapter_roman": roman.group() if roman else None,
         "width": int(_attr(cap, "hp:caption", "width", "8504")),
         "gap": int(_attr(cap, "hp:caption", "gap", "850")),
         "style": int(_attr(p.group(), "hp:p", "styleIDRef", "0")) if p else 0,
@@ -382,9 +488,74 @@ def _caption_shape(table_xml: str) -> Optional[Dict[str, Any]]:
         "char": int(char.group(1)) if char else 0,
         "auto_num": auto.group(1) if auto else None,
         "auto_num_format": fmt.group() if fmt else None,
-        "before": texts[0] if texts else "",
-        "after": texts[1] if len(texts) > 1 else "",
+        # 양식에 들어 있던 표본 제목("> 옛 제목")은 버리고 구분 기호만 남긴다.
+        # 그러지 않으면 새 제목이 옛 제목 뒤에 붙는다.
+        "before": before if auto else "",
+        "after": _caption_tail(texts[1]) if (auto and len(texts) > 1) else "",
+        "sample": _unescape(texts[-1]).strip() if texts else "",
     }
+
+
+def _caption_tail(text: str) -> str:
+    """`> 옛 표 제목` → `> `. 번호 뒤에 오는 구분 기호만 남긴다."""
+    head = re.match(r"^([^\w가-힣]*\s*)", _unescape(text))
+    return head.group(1) if head else ""
+
+
+def _unescape(text: str) -> str:
+    return (text.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
+            .replace("&apos;", "'").replace("&amp;", "&"))
+
+
+# ──────────────────────────────────────────────────────────────
+# 표 주(표 바로 아래 자료 줄)
+# ──────────────────────────────────────────────────────────────
+#: 표 주 스타일에 흔히 붙는 이름
+_TABLE_NOTE_NAMES = ("표 주", "표주", "자료", "출처", "주석", "표 자료")
+
+
+def _pick_table_note(levels: List[LevelGuess], records: Sequence[ParaRecord],
+                     notes: List[str]) -> Optional[LevelGuess]:
+    """표 바로 아래에 붙는 '자료：…' 줄의 레벨을 골라 낸다.
+
+    이름(`표 주`·`자료`)이 맞거나, 실제로 표 뒤에 자주 나오면 그렇게 본다.
+    골라낸 레벨은 본문 레벨에서 **빼낸다.** 그래야 `※` 마커가 겹치지 않는다.
+    """
+    after = {}
+    total = {}
+    for rec in records:
+        if rec.in_table or not rec.text:
+            continue
+        key = (rec.style, rec.para, rec.char)
+        total[key] = total.get(key, 0) + 1
+        if rec.after_table:
+            after[key] = after.get(key, 0) + 1
+
+    best: Optional[LevelGuess] = None
+    reason = ""
+    for level in levels:
+        # 제목은 표 주가 아니다(prefix에는 기호도 담기므로 번호 유형만 본다)
+        if (level.marker in HEADING_MARKERS or level.auto_number
+                or (level.prefix or "").startswith("AUTO_")):
+            continue
+        key = (level.style, level.para, level.char)
+        seen = total.get(key, 0)
+        hits = after.get(key, 0)
+        by_name = any(name in level.name for name in _TABLE_NOTE_NAMES)
+        # 자리만으로 볼 때는 확실할 때만 — 나온 것이 **전부** 표 바로 뒤여야 한다
+        by_place = seen >= 2 and hits == seen
+        if not by_name and not by_place:
+            continue
+        if best is None or hits > after.get((best.style, best.para, best.char), 0):
+            best = level
+            reason = ("스타일 이름" if by_name else f"표 바로 뒤에 {hits}/{seen}번 나옴")
+
+    if best is None:
+        return None
+    levels.remove(best)
+    notes.append(f"'{best.name}' 레벨을 **표 주**로 본다({reason}). "
+                 f"`{best.marker or '※'} 자료：…`처럼 표 바로 아래에 쓴다")
+    return best
 
 
 # ──────────────────────────────────────────────────────────────
@@ -595,9 +766,12 @@ def analyze(source: Any, name: str = "", bullets: str = "auto") -> FormResult:
 
     if not levels:
         notes.append("본문 문단을 하나도 찾지 못했다 → 내용이 든 양식 파일인지 확인할 것")
+    table_note = _pick_table_note(levels, records, notes)
     apply_bullet_source(levels, bullets, notes)
 
     body_styles = [g.style for g in levels]
+    if table_note is not None:
+        body_styles.append(table_note.style)
     cut = preamble_cut(section_xml, body_styles)
     table = _table_skeleton(section_xml, notes)
 
@@ -611,6 +785,13 @@ def analyze(source: Any, name: str = "", bullets: str = "auto") -> FormResult:
     wrap = _table_wrap_shape(section_xml) or {
         "style": blank_style, "para": blank_para, "char": blank_char}
 
+    page = _page_setup(section_xml)
+    note_shape = _footnote_shape(section_xml)
+    chapter = _chapter_cover(section_xml[:cut])
+    if chapter and not chapter["title_in_text"]:
+        notes.append("장 표지에 로마자는 있으나 'Ⅱ. 제목' 꼴 제목을 찾지 못했다 "
+                     "→ [장: 제목]으로는 번호만 바뀐다")
+
     form = {
         "schema": SCHEMA_ID,
         "name": name or _default_name(source),
@@ -623,9 +804,25 @@ def analyze(source: Any, name: str = "", bullets: str = "auto") -> FormResult:
         "blank": {"style": blank_style, "para": blank_para, "char": blank_char},
         "table_wrap": wrap,
         "table": table,
+        "page": page,
+        "chapter": chapter,
+        "table_note": (None if table_note is None else {
+            "key": table_note.key,
+            "marker": table_note.marker or "※",
+            "name": table_note.name,
+            "style": table_note.style,
+            "para": table_note.para,
+            "char": table_note.char,
+            "write_marker": table_note.write_marker,
+        }),
         "footnote": ({"style": footnote_style,
                       "para": styles[footnote_style]["para_pr"],
-                      "char": styles[footnote_style]["char_pr"]}
+                      "char": styles[footnote_style]["char_pr"],
+                      "size_pt": char_props.get(
+                          styles[footnote_style]["char_pr"], {}).get("size_pt"),
+                      "color": char_props.get(
+                          styles[footnote_style]["char_pr"], {}).get("color"),
+                      "shape": note_shape}
                      if footnote_style is not None else None),
         "fonts": sorted({faces.get(cp.get("font_id", 0), "") for cp in char_props.values()} - {""}),
         "notes": notes,
@@ -694,13 +891,55 @@ def render_report(form: Dict[str, Any], levels: Sequence[LevelGuess]) -> str:
     caption = table.get("caption")
     out.append(f"- 캡션: {'있음 (' + (caption.get('before') or '') + '…)' if caption else '없음'}")
 
+    page = form.get("page") or {}
+    margin = page.get("margin_mm") or {}
+    out += ["", "## 쪽 설정 (그대로 지켜진다)", "",
+            f"- 용지 {page.get('size', '?')} {page.get('orientation', '')}",
+            f"- 여백(mm): 위 {margin.get('top', 0)} · 아래 {margin.get('bottom', 0)} · "
+            f"왼 {margin.get('left', 0)} · 오른 {margin.get('right', 0)} · "
+            f"머리말 {margin.get('header', 0)} · 꼬리말 {margin.get('footer', 0)}"]
+    marks = [name for name, flag in (("머리말", page.get("has_header")),
+                                     ("꼬리말", page.get("has_footer")),
+                                     ("쪽 번호", page.get("has_page_number"))) if flag]
+    out.append(f"- {', '.join(marks)}이(가) 있다" if marks
+               else "- 머리말·꼬리말·쪽 번호는 없다")
+
+    note = form.get("table_note")
+    chapter = form.get("chapter")
+    if note or chapter:
+        out += ["", "## 그 밖의 자리", ""]
+        if note:
+            out.append(f"- **표 주**: `{note['marker']} 자료：…`를 표 바로 아래에 쓰면 "
+                       f"'{note['name']}' 스타일이 붙는다")
+        if chapter:
+            title = chapter.get("title")
+            out.append(f"- **장 표지**: 지금 `{chapter.get('roman')}"
+                       + (f". {title}`" if title else "`")
+                       + ". `[장: 제목]`과 `--chapter N`으로 바꾼다")
+    caption = (form.get("table") or {}).get("caption") or {}
+    if caption.get("auto_num"):
+        prefix = caption.get("before", "") + "n" + caption.get("after", "")
+        out.append(f"- **표 번호**: `{prefix.strip()}` 꼴로 한글이 매긴다"
+                   + (f" (장 번호 {caption['chapter_roman']})"
+                      if caption.get("chapter_roman") else ""))
+
+    footnote = form.get("footnote") or {}
+    shape = footnote.get("shape") or {}
+    if footnote:
+        out += ["", "## 각주", "",
+                f"- 스타일 {footnote['style']}번 · {pt(footnote.get('size_pt') or 0)}pt · "
+                f"{footnote.get('color') or '?'}",
+                f"- 번호 모양 `{shape.get('prefix_char', '')}n"
+                f"{shape.get('suffix_char', '')}` ({shape.get('number_format', 'DIGIT')})"
+                + (", 위 첨자" if shape.get("superscript") else ""),
+                f"- 구분선 {shape.get('line_type', '?')} {shape.get('line_color', '')}"
+                f", 번호 매김 {shape.get('restart', '?')}"]
+
     out += ["", "## 보존 구간", "",
             f"- `{form['section']}`의 앞 {form['preamble_bytes']}바이트(용지 설정·표지·머리글)를 "
             "그대로 두고 그 뒤 본문만 갈아 끼운다",
             f"- `{form['header']}`는 **손대지 않는다.** 자동 글머리표·번호매기기·글꼴이 그대로 산다"]
 
-    if form.get("footnote"):
-        out.append(f"- 각주 스타일 {form['footnote']['style']}번을 찾았다")
     if form.get("fonts"):
         out += ["", "## 쓰인 글꼴", "", ", ".join(form["fonts"])]
     if form["notes"]:

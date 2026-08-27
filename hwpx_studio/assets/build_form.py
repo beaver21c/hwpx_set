@@ -39,11 +39,15 @@
 
     (빈 줄)             문단 사이 간격
     | a | b |           표. 첫 행이 머리행. `|---|` 줄은 무시
-    [표: 제목]          바로 다음 표의 제목
+    [표: 제목]          바로 다음 표의 제목(양식에 표 번호가 있으면 <표 Ⅱ-1>처럼)
     {cols=20,50,30}     바로 다음 표의 열 너비 백분율
     셀 안 <br>          셀 안에서 줄 나눔
+    ※ 자료：…           표 주. 표 바로 아래에 둔다(양식에 표 주 스타일이 있을 때)
+    [장: 제목]          장 표지의 제목. 문서에 하나
     앞말[^1]            각주 번호 자리
     [^1]: 내용          각주 내용(문서 어디에 적어도 된다)
+
+장 번호는 `--chapter 3`으로 정한다(Ⅲ). 표지 로마자와 표 번호 접두가 함께 바뀐다.
 
 각주 번호는 한글이 문서 순서대로 매긴다. 라벨은 이름표일 뿐이다.
 
@@ -66,6 +70,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 HERE = Path(__file__).resolve().parent
 
 ROMAN = ["Ⅰ", "Ⅱ", "Ⅲ", "Ⅳ", "Ⅴ", "Ⅵ", "Ⅶ", "Ⅷ", "Ⅸ", "Ⅹ", "Ⅺ", "Ⅻ"]
+ROMAN_CHARS = "".join(ROMAN)
 CIRCLED = "①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮"
 HANGUL_ORDER = "가나다라마바사아자차카타파하"
 
@@ -75,6 +80,7 @@ SENTENCE_END = ".。!?"
 FOOTNOTE_REF_RE = re.compile(r"\[\^([^\]\s]+)\]")
 FOOTNOTE_DEF_RE = re.compile(r"^\[\^([^\]\s]+)\]:\s*(.*)$")
 CAPTION_RE = re.compile(r"^\[표\s*[:：]\s*(.+?)\]\s*$")
+CHAPTER_RE = re.compile(r"^\[장\s*[:：]\s*(.+?)\]\s*$")
 COLS_RE = re.compile(r"^\{cols\s*=\s*([\d.,\s]+)\}\s*$")
 SEP_ROW_RE = re.compile(r"^\|[\s:|\-]+\|$")
 
@@ -112,6 +118,17 @@ class Form:
         if plain:
             return plain[0]
         return self.levels[-1] if self.levels else None
+
+    @property
+    def table_note(self) -> Optional[Dict[str, Any]]:
+        return self.data.get("table_note")
+
+    @property
+    def chapter_roman(self) -> Optional[str]:
+        """양식에 들어 있던 장 로마자(표지·표 번호에 쓰인 값)."""
+        chapter = self.data.get("chapter") or {}
+        caption = (self.data.get("table") or {}).get("caption") or {}
+        return chapter.get("roman") or caption.get("chapter_roman")
 
     def refs(self, block: str) -> Tuple[int, int, int]:
         node = self.data.get(block) or {}
@@ -177,7 +194,7 @@ def load_form(path: Optional[Path] = None) -> Form:
 # ---------------------------------------------------------------------------
 @dataclass
 class Item:
-    kind: str                                   # para / table / blank
+    kind: str                                   # para / table / blank / table_note
     level: Optional[Dict[str, Any]] = None
     text: str = ""
     notes: List[Dict[str, Any]] = field(default_factory=list)
@@ -191,6 +208,7 @@ class Item:
 class Parsed:
     items: List[Item] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    chapter: Optional[str] = None          # [장: 제목]으로 적은 장 제목
 
 
 def parse_input(text: str, form: Form) -> Parsed:
@@ -221,6 +239,13 @@ def parse_input(text: str, form: Form) -> Parsed:
             notes[label] = {"text": body, "used": 0}
             if out.items and out.items[-1].kind == "blank":
                 out.items.pop()
+            continue
+
+        m = CHAPTER_RE.match(raw.strip())
+        if m:
+            if out.chapter is not None:
+                warn(f"{ln}행: [장: …]이 두 번 나왔다 → 뒤엣것을 쓴다")
+            out.chapter = m.group(1).strip()
             continue
 
         m = CAPTION_RE.match(raw.strip())
@@ -258,6 +283,9 @@ def parse_input(text: str, form: Form) -> Parsed:
                     pend_cols = None
                 if any(FOOTNOTE_REF_RE.search(c) for row in rows for c in row):
                     warn(f"{ln}행: 표 안에는 각주를 달 수 없다 → 표 아래 문단에 달 것")
+                if pend_cap and not ((form.data.get("table") or {}).get("caption")):
+                    warn(f"{ln}행: 이 양식에는 표 제목(캡션) 자리가 없어 "
+                         f"'{pend_cap}'을 넣지 못한다 → 표 위 문단으로 쓸 것")
                 out.items.append(Item("table", rows=rows, caption=pend_cap,
                                       col_pct=pend_cols, line=ln))
             pend_cap, pend_cols = "", None
@@ -266,6 +294,14 @@ def parse_input(text: str, form: Form) -> Parsed:
         if pend_cap:
             warn(f"{ln}행: [표: {pend_cap}] 다음에 표가 없다 → 제목을 버렸다")
             pend_cap = ""
+
+        note_level = form.table_note
+        if note_level and note_level.get("marker"):
+            head = f"{note_level['marker']} "
+            if raw.strip().startswith(head):
+                out.items.append(Item("table_note", level=note_level,
+                                      text=raw.strip()[len(head):].strip(), line=ln))
+                continue
 
         level, body = _match_marker(raw, form)
         if level is None:
@@ -344,7 +380,14 @@ def lint(parsed: Parsed, form: Form) -> List[str]:
     prev_key: Optional[str] = None
     note_no = 0
 
-    for item in parsed.items:
+    for index, item in enumerate(parsed.items):
+        if item.kind == "table_note":
+            before = _previous_kind(parsed.items, index)
+            if before != "table":
+                issues.append(f"{item.line}행: 표 주는 표 바로 아래에 두는 줄이다 "
+                              f"(지금은 {'문서 맨 앞' if before is None else before} 뒤) "
+                              "→ 자리를 옮기거나 본문 레벨로 쓸 것")
+            continue
         if item.kind == "table":
             continue
         if item.kind == "blank":
@@ -369,9 +412,18 @@ def lint(parsed: Parsed, form: Form) -> List[str]:
         after = parsed.items[idx + 1].kind if idx + 1 < len(parsed.items) else "blank"
         if before != "blank":
             issues.append(f"{item.line}행: 표 앞에 빈 줄이 없다")
-        if after != "blank":
+        # 표 주는 표에 딸린 줄이라 사이에 빈 줄을 두지 않는다
+        if after not in ("blank", "table_note"):
             issues.append(f"{item.line}행: 표 뒤에 빈 줄이 없다")
     return issues
+
+
+def _previous_kind(items: Sequence[Item], index: int) -> Optional[str]:
+    """빈 줄을 건너뛰고 바로 앞 블록의 종류."""
+    for item in reversed(items[:index]):
+        if item.kind != "blank":
+            return item.kind
+    return None
 
 
 def _note_issues(note: Dict[str, Any], number: int, line: int,
@@ -462,9 +514,13 @@ def cell_paragraphs(text: str, refs: Tuple[int, int, int]) -> str:
     return "".join(paragraph(style, para, char, part) for part in parts)
 
 
-def caption_xml(title: str, shape: Dict[str, Any], width: int) -> str:
+def caption_xml(title: str, shape: Dict[str, Any], width: int,
+                roman: Optional[str] = None) -> str:
     before = shape.get("before") or "<표 "
     after = shape.get("after") or "> "
+    old = shape.get("chapter_roman")
+    if roman and old and old != roman:
+        before = before.replace(old, roman)      # <표 Ⅱ- → <표 Ⅲ-
     fmt = shape.get("auto_num_format") or (
         '<hp:autoNumFormat type="DIGIT" userChar="" prefixChar="" suffixChar="" '
         'supscript="0"/>')
@@ -487,7 +543,7 @@ def caption_xml(title: str, shape: Dict[str, Any], width: int) -> str:
 _table_seq = [900000000]
 
 
-def table_xml(item: Item, form: Form) -> str:
+def table_xml(item: Item, form: Form, roman: Optional[str] = None) -> str:
     spec = form.data.get("table") or {}
     cell_refs = (int((spec.get("cell_para") or {}).get("style", 0)),
                  int((spec.get("cell_para") or {}).get("para", 0)),
@@ -530,10 +586,8 @@ def table_xml(item: Item, form: Form) -> str:
         rows_xml.append("<hp:tr>" + "".join(cells) + "</hp:tr>")
 
     caption_shape = spec.get("caption")
-    caption = (caption_xml(item.caption, caption_shape, width)
+    caption = (caption_xml(item.caption, caption_shape, width, roman)
                if (item.caption and caption_shape) else "")
-    if item.caption and not caption_shape:
-        caption = ""
 
     tbl = (
         f'<hp:tbl id="{tid}" zOrder="{tid % 1000}" numberingType="TABLE" '
@@ -583,8 +637,9 @@ class Numbering:
         return ""
 
 
-def build_body(parsed: Parsed, form: Form) -> Tuple[str, Dict[str, int]]:
-    stats = {"문단": 0, "표": 0, "각주": 0}
+def build_body(parsed: Parsed, form: Form,
+               roman: Optional[str] = None) -> Tuple[str, Dict[str, int]]:
+    stats = {"문단": 0, "표": 0, "각주": 0, "표 주": 0}
     note_refs = form.refs("footnote") if form.data.get("footnote") else (0, 0, 0)
     numbering = Numbering(form)
     note_no = 1
@@ -594,8 +649,16 @@ def build_body(parsed: Parsed, form: Form) -> Tuple[str, Dict[str, int]]:
             out.append(paragraph(*form.refs("blank"), ""))
             continue
         if item.kind == "table":
-            out.append(table_xml(item, form))
+            out.append(table_xml(item, form, roman))
             stats["표"] += 1
+            continue
+        if item.kind == "table_note":
+            note = item.level or {}
+            text = (f"{note.get('marker', '')} {item.text}".strip()
+                    if note.get("write_marker") else item.text)
+            out.append(paragraph(int(note.get("style", 0)), int(note.get("para", 0)),
+                                 int(note.get("char", 0)), text))
+            stats["표 주"] += 1
             continue
         level = item.level or {}
         text = item.text
@@ -654,6 +717,39 @@ def split_preamble(section_xml: str, body_styles: Sequence[int]) -> Tuple[str, s
         if cut < 0:
             raise SystemExit("[중단] 템플릿 본문에서 </hs:sec>를 찾지 못했다")
     return section_xml[:cut], "</hs:sec>"
+
+
+def replace_chapter(preamble: str, roman: Optional[str],
+                    title: Optional[str]) -> Tuple[str, List[str]]:
+    """장 표지의 로마자와 'Ⅱ. 제목'을 바꾼다.
+
+    보존 구간을 건드리는 유일한 곳이다. 그래서 **찾은 것만** 바꾸고, 못 찾으면
+    바꾸지 않고 그 사실을 말한다. 조용히 지나가면 옛 장 번호가 남은 문서가 나온다.
+    """
+    notes: List[str] = []
+    if not roman and not title:
+        return preamble, notes
+
+    if roman:
+        head = preamble.find("<hp:container")
+        tail = preamble.find("</hp:container>", head) if head >= 0 else -1
+        if head >= 0 and tail >= 0:
+            segment, hits = re.subn(rf"(<hp:t>)[{ROMAN_CHARS}](</hp:t>)",
+                                    rf"\g<1>{roman}\g<2>", preamble[head:tail])
+            preamble = preamble[:head] + segment + preamble[tail:]
+            if not hits:
+                notes.append("표지 상자에서 로마자를 찾지 못해 장 번호를 바꾸지 않았다")
+        else:
+            notes.append("표지 상자(hp:container)가 없어 장 번호를 바꾸지 않았다")
+
+    if title:
+        pattern = re.compile(rf"(<hp:t>)[{ROMAN_CHARS}]\.\s*[^<]*(</hp:t>)")
+        preamble, hits = pattern.subn(
+            rf"\g<1>{roman or ''}. {esc(title)}\g<2>", preamble, count=1)
+        if not hits:
+            notes.append("장 제목('Ⅱ. …' 꼴)을 찾지 못해 제목을 바꾸지 않았다 "
+                         "→ 이 양식은 장 표지에 제목이 없을 수 있다")
+    return preamble, notes
 
 
 # ---------------------------------------------------------------------------
@@ -721,10 +817,19 @@ def check_output(path: Path) -> List[str]:
 # 조립
 # ---------------------------------------------------------------------------
 def build(form: Form, template: Path, source: Path, out: Path,
-          check_only: bool, strict: bool, bullets: str = "auto") -> int:
+          check_only: bool, strict: bool, bullets: str = "auto",
+          chapter: Optional[int] = None) -> int:
     chosen = form.apply_bullet_source(bullets)
     parsed = parse_input(source.read_text(encoding="utf-8"), form)
     issues = lint(parsed, form) + chosen
+
+    roman = form.chapter_roman
+    if chapter is not None:
+        if not 1 <= chapter <= len(ROMAN):
+            raise SystemExit(f"[중단] --chapter는 1~{len(ROMAN)} 사이여야 한다: {chapter}")
+        roman = ROMAN[chapter - 1]
+    if parsed.chapter and not (form.data.get("chapter") or {}):
+        issues.append("[장: …]을 적었지만 이 양식에는 장 표지가 없다 → 반영되지 않는다")
 
     print("── 1층 입력 검사 " + "─" * 30)
     for issue in issues:
@@ -748,7 +853,11 @@ def build(form: Form, template: Path, source: Path, out: Path,
         print("  [경고] 이 양식에는 각주 스타일이 없다 → 한글에서 각주 서식이 흐트러질 수 있다")
 
     preamble, tail = split_preamble(section_xml, form.body_styles)
-    body, stats = build_body(parsed, form)
+    if parsed.chapter or (chapter is not None and roman):
+        preamble, changed = replace_chapter(preamble, roman, parsed.chapter)
+        for note in changed:
+            print("  [알림]", note)
+    body, stats = build_body(parsed, form, roman)
     new_section = preamble + body + tail
 
     print("── 2층 구조 검사 " + "─" * 30)
@@ -759,7 +868,8 @@ def build(form: Form, template: Path, source: Path, out: Path,
         print("  → 생성 중단")
         return 2
     print(f"  참조·이중 기호 이상 없음 "
-          f"(문단 {stats['문단']}, 표 {stats['표']}, 각주 {stats['각주']})")
+          f"(문단 {stats['문단']}, 표 {stats['표']}, 표 주 {stats['표 주']}, "
+          f"각주 {stats['각주']})")
 
     entries[form.section] = new_section.encode("utf-8")
     entries["Preview/PrvText.txt"] = (
@@ -797,6 +907,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--check-only", action="store_true", help="입력 검사만")
     ap.add_argument("--strict", action="store_true", help="경고가 하나라도 있으면 만들지 않음")
     ap.add_argument("--markers", action="store_true", help="이 양식의 마커 목록")
+    ap.add_argument("--chapter", type=int, metavar="N",
+                    help="장 번호(1=Ⅰ, 2=Ⅱ …). 표지 로마자와 표 번호 접두에 쓴다")
     ap.add_argument("--bullets", default="auto", choices=["auto", "hangul", "text"],
                     help="줄머리 기호를 누가 붙이나 "
                          "(auto=양식대로, hangul=한글에 맡김, text=도구가 적음)")
@@ -818,7 +930,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not args.input.exists():
         raise SystemExit(f"[중단] 입력 파일이 없다: {args.input}")
     return build(form, template, args.input, args.output, args.check_only,
-                 args.strict, args.bullets)
+                 args.strict, args.bullets, args.chapter)
 
 
 if __name__ == "__main__":
