@@ -15,6 +15,8 @@ hwpx-studio extract 기존문서.hwpx -o my.json      # 기존 hwpx에서 역생
 | `name` | 프로파일 이름(문서에는 들어가지 않음) |
 | `mode` | `outline`(개조식) / `narrative`(서술식) |
 | `fonts` | `bold`, `light`, `fallback` — 한글 글꼴 이름. 미설치 글꼴은 뷰어가 대체 표시 |
+| `page.size` | 용지 이름. `A4` `B5` `A5` `A3` `B4` `Letter` `크라운판`(166×241) `신국판` `국판` `4x6배판` |
+| `page.width_mm` / `page.height_mm` | 용지를 mm로 직접. 있으면 `size`보다 우선한다 |
 | `page.margin_mm` | `left/right/top/bottom/header/footer` (mm) |
 | `header_footer` | `header_text`, `page_number` (연동 예정, 현재 미적용) |
 | `levels` | 레벨 목록. **순서 = 깊이, 개수 가변** |
@@ -39,6 +41,9 @@ hwpx-studio extract 기존문서.hwpx -o my.json      # 기존 hwpx에서 역생
 | `color` | 글자색 `#RRGGBB` | `#4c4c4c` |
 | `left_pt` | 왼쪽 여백 | `10` |
 | `indent_pt` | 내어쓰기(0이면 없음) | `15` |
+| `first_line_indent_pt` | 첫 줄 들여쓰기. `indent_pt`와 한 값을 다투므로 **둘 중 하나만** 쓴다(내어쓰기가 이긴다) | `10.5` |
+| `letter_spacing` | 자간. 음수가 좁히는 쪽 | `-2` |
+| `spacing_above_pt` | 문단 **위** 간격 | `15` |
 | `spacing_below_pt` | 문단 아래 간격 | `3` |
 | `line_spacing` | 줄 간격(%) | `170` |
 | `align` | `JUSTIFY/LEFT/RIGHT/CENTER/DISTRIBUTE/DIVISION` | `JUSTIFY` |

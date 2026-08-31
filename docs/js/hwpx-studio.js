@@ -41,7 +41,7 @@ export const DEFAULT_PROFILE = {
   body: {
     name: '본문', size_pt: 12, font: 'light', color: '#000000', bold: false,
     left_pt: 0, indent_pt: 0, spacing_below_pt: 0, line_spacing: 160,
-    align: 'JUSTIFY', first_line_indent_pt: 0,
+    align: 'JUSTIFY', first_line_indent_pt: 0, spacing_above_pt: 0, letter_spacing: 0,
   },
   table: {
     border_color: '#999999', header_bg: '#4472C4', width_mm: 162.5, cell_margin_mm: 0.3,
@@ -1109,14 +1109,26 @@ const escapeXml = (s) => String(s)
 
 const fontId = (key) => (key === 'bold' ? 0 : 1);
 
-function charPrXml(id, sizePt, bold, color = '#000000', font = 0, borderFillId = 2) {
+/**
+ * `hc:intent` 값 (engine.py: _intent 이식). 음수는 내어쓰기, 양수는 첫 줄 들여쓰기.
+ * 둘 다 있으면 내어쓰기가 이긴다 — 한글에서도 한 값이라 동시에 줄 수 없다.
+ */
+function intentOf(cfg) {
+  const hanging = cfg.indent_pt || 0;
+  return hanging ? -pt(hanging) : pt(cfg.first_line_indent_pt || 0);
+}
+
+/** 글자모양 하나. letterSpacing은 자간 — 음수가 좁히는 쪽이다. */
+function charPrXml(id, sizePt, bold, color = '#000000', font = 0, borderFillId = 2,
+                   letterSpacing = 0) {
   const b = bold ? ' bold="1"' : '';
   const f = String(font);
+  const ls = Number(letterSpacing) || 0;
   return `<hh:charPr id="${id}" height="${pt(sizePt)}" textColor="${color}" shadeColor="none"`
     + ` useFontSpace="0" useKerning="0" symMark="NONE" borderFillIDRef="${borderFillId}"${b}>`
     + `<hh:fontRef hangul="${f}" latin="${f}" hanja="${f}" japanese="${f}" other="${f}" symbol="${f}" user="${f}"/>`
     + '<hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>'
-    + '<hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>'
+    + `<hh:spacing hangul="${ls}" latin="${ls}" hanja="${ls}" japanese="${ls}" other="${ls}" symbol="${ls}" user="${ls}"/>`
     + '<hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>'
     + '<hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>'
     + '<hh:underline type="NONE" shape="SOLID" color="#000000"/>'
@@ -1124,11 +1136,13 @@ function charPrXml(id, sizePt, bold, color = '#000000', font = 0, borderFillId =
     + '<hh:shadow type="NONE" color="#C0C0C0" offsetX="10" offsetY="10"/></hh:charPr>';
 }
 
-function paraPrXml(id, { left = 0, indent = 0, align = 'JUSTIFY', spacingBelow = 0, lineSpacing = 180 }) {
+/** 문단모양 하나. indent가 음수면 내어쓰기, 양수면 첫 줄 들여쓰기다. */
+function paraPrXml(id, { left = 0, indent = 0, align = 'JUSTIFY', spacingBelow = 0,
+                         lineSpacing = 180, spacingAbove = 0 }) {
   const body = '<hh:margin>'
     + `<hc:intent value="${indent}" unit="HWPUNIT"/>`
     + `<hc:left value="${left}" unit="HWPUNIT"/>`
-    + '<hc:right value="0" unit="HWPUNIT"/><hc:prev value="0" unit="HWPUNIT"/>'
+    + `<hc:right value="0" unit="HWPUNIT"/><hc:prev value="${spacingAbove}" unit="HWPUNIT"/>`
     + `<hc:next value="${spacingBelow}" unit="HWPUNIT"/></hh:margin>`
     + `<hh:lineSpacing type="PERCENT" value="${lineSpacing}" unit="HWPUNIT"/>`;
   return `<hh:paraPr id="${id}" tabPrIDRef="0" condense="0" fontLineHeight="0" snapToGrid="1"`
@@ -1234,16 +1248,18 @@ function patchHeader(xml, profile, ids, diagramFills, textKeys = []) {
   const cfgs = styleConfigs(profile, textKeys);
   const chars = cfgs.map(([key, cfg]) => charPrXml(
     ids.chars[key], cfg.size_pt ?? 12, Boolean(cfg.bold),
-    cfg.color || '#000000', fontId(cfg.font || 'light'),
+    cfg.color || '#000000', fontId(cfg.font || 'light'), 2,
+    Number(cfg.letter_spacing || 0),
   )).join('');
   x = x.replace('</hh:charProperties>', `${chars}</hh:charProperties>`);
 
   const paras = cfgs.map(([key, cfg]) => paraPrXml(ids.paras[key], {
     left: pt(cfg.left_pt || 0),
-    indent: cfg.indent_pt ? -pt(cfg.indent_pt) : 0,
+    indent: intentOf(cfg),
     align: cfg.align || 'JUSTIFY',
     spacingBelow: pt(cfg.spacing_below_pt || 0),
     lineSpacing: Number(cfg.line_spacing ?? 180),
+    spacingAbove: pt(cfg.spacing_above_pt || 0),
   })).join('');
   x = x.replace('</hh:paraProperties>', `${paras}</hh:paraProperties>`);
 

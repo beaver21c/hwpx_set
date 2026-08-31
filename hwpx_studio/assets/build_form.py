@@ -112,12 +112,20 @@ class Form:
     def body_styles(self) -> List[int]:
         return [int(lv["style"]) for lv in self.levels]
 
+    def plain_level(self) -> Optional[Dict[str, Any]]:
+        """마커 없는 줄이 갈 **제 자리**. 없으면 None.
+
+        양식이 이런 레벨을 두었다면(크라운판의 '바탕글' 같은) 마커 없는 줄은
+        서술식 본문이라는 뜻이다. 앞 문단에 이어 붙이면 안 된다.
+        """
+        for lv in self.levels:
+            if not lv.get("marker"):
+                return lv
+        return None
+
     def fallback(self) -> Optional[Dict[str, Any]]:
         """마커가 없는 줄에 쓸 레벨. 마커 없는 레벨 → 없으면 가장 얕은 레벨."""
-        plain = [lv for lv in self.levels if not lv.get("marker")]
-        if plain:
-            return plain[0]
-        return self.levels[-1] if self.levels else None
+        return self.plain_level() or (self.levels[-1] if self.levels else None)
 
     @property
     def table_note(self) -> Optional[Dict[str, Any]]:
@@ -305,14 +313,19 @@ def parse_input(text: str, form: Form) -> Parsed:
 
         level, body = _match_marker(raw, form)
         if level is None:
-            level = form.fallback()
             body = raw.strip()
-            if out.items and out.items[-1].kind == "para":
-                out.items[-1].text += " " + body
-                warn(f"{ln}행: 마커가 없는 줄 → 앞 문단에 이어 붙였다")
-                continue
-            warn(f"{ln}행: 마커가 없는 줄 → "
-                 f"'{(level or {}).get('name', '기본')}' 레벨로 넣었다")
+            plain = form.plain_level()
+            if plain is not None:
+                # 양식에 서술식 본문 자리가 있다 → 새 문단이다. 알릴 것 없다
+                level = plain
+            else:
+                level = form.fallback()
+                if out.items and out.items[-1].kind == "para":
+                    out.items[-1].text += " " + body
+                    warn(f"{ln}행: 마커가 없는 줄 → 앞 문단에 이어 붙였다")
+                    continue
+                warn(f"{ln}행: 마커가 없는 줄 → "
+                     f"'{(level or {}).get('name', '기본')}' 레벨로 넣었다")
         if level is None:
             warn(f"{ln}행: 쓸 수 있는 레벨이 없어 줄을 버렸다")
             continue
@@ -377,6 +390,12 @@ def _split_notes(text: str, notes: Dict[str, Dict[str, Any]],
 def lint(parsed: Parsed, form: Form) -> List[str]:
     issues: List[str] = list(parsed.warnings)
     depth = {lv["key"]: i for i, lv in enumerate(form.levels)}
+    # 마커도 자동 번호도 없는 레벨(서술식 본문·참고문헌 따위)은 어느 제목 밑에나
+    # 온다. 계층 순서를 따질 대상이 아니라 레벨 점프 검사에서 뺀다.
+    free_keys = {lv["key"] for lv in form.levels
+                 if not lv.get("marker") or not (lv.get("auto_bullet")
+                                                 or lv.get("auto_number")
+                                                 or lv.get("write_marker"))}
     prev_key: Optional[str] = None
     note_no = 0
 
@@ -395,7 +414,8 @@ def lint(parsed: Parsed, form: Form) -> List[str]:
         key = (item.level or {}).get("key", "")
         if not item.text.strip():
             issues.append(f"{item.line}행: 내용이 빈 문단")
-        if prev_key is not None and key in depth and prev_key in depth:
+        if (prev_key is not None and key in depth and prev_key in depth
+                and key not in free_keys and prev_key not in free_keys):
             if depth[key] - depth[prev_key] > 1:
                 issues.append(f"{item.line}행: {prev_key} 다음에 {key}가 왔다 "
                               "→ 중간 레벨을 건너뛰었다")
@@ -703,11 +723,23 @@ def top_level_paragraphs(section_xml: str) -> List[Tuple[int, int, str]]:
     return [(s, e, t) for s, e, t in tops if e is not None]
 
 
+#: 이 태그가 든 문단은 본문이 아니라 **구역 정의**다. 스타일이 무엇이든 자른 앞에
+#: 남겨야 한다. 한글은 용지·여백을 `hp:secPr`로 읽고, 이것이 빠지면 문서를
+#: **기본 용지 A4로 연다** — 크라운판(166×241mm) 같은 양식이 통째로 어긋난다.
+SECTION_TAGS = ("<hp:secPr", "<hp:colPr")
+
+
 def split_preamble(section_xml: str, body_styles: Sequence[int]) -> Tuple[str, str]:
-    """(보존할 앞부분, 닫는 꼬리). 본문 스타일이 처음 나오는 문단에서 자른다."""
+    """(보존할 앞부분, 닫는 꼬리). 본문 스타일이 처음 나오는 문단에서 자른다.
+
+    구역 정의를 담은 문단은 건너뛴다. 빈 양식은 본문 문단이 하나뿐이고 그 하나가
+    용지 설정을 지고 있는 일이 흔한데, 거기서 자르면 용지가 날아간다.
+    """
     wanted = {str(s) for s in body_styles}
     cut = None
-    for start, _end, tag in top_level_paragraphs(section_xml):
+    for start, end, tag in top_level_paragraphs(section_xml):
+        if any(t in section_xml[start:end] for t in SECTION_TAGS):
+            continue
         m = re.search(r'styleIDRef="(\d+)"', tag)
         if m and m.group(1) in wanted:
             cut = start

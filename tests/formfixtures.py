@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict
 
 from hwpx_studio.engine import build_document
+from hwpx_studio.formkit import top_level_paragraphs
 from hwpx_studio.parser import parse_text
 from hwpx_studio.profile import load_profile
 
@@ -145,6 +146,42 @@ _CAPTION = (
     'supscript="0"/></hp:autoNum></hp:ctrl>'
     '<hp:t>&gt; 옛 표 제목</hp:t></hp:run></hp:p></hp:subList></hp:caption>'
 )
+
+
+#: 스타일 이름을 기관 서식처럼 바꾼다(빈 양식 시험용).
+_STYLE_RENAMES = [
+    ('name="제목1"', 'name="타이틀-장제목"'),
+    ('name="제목2"', 'name="절"'),
+    ('name="네모"', 'name="요약_네모"'),
+    ('name="원"', 'name="요약_원"'),
+    ('name="하이픈"', 'name="요약_하이픈"'),
+]
+
+
+def styles_only_form(text: str = SAMPLE) -> bytes:
+    """스타일만 있고 **본문이 빈** 양식.
+
+    기관이 나눠 주는 '빈 서식 파일'이 대개 이렇다 — `header.xml`에 스타일이 다
+    들어 있고 본문은 비어 있다. 문단을 근거로 레벨을 찾으면 하나도 못 찾으므로,
+    `formkit`이 스타일 이름으로 읽는 길을 시험한다.
+
+    용지 설정(`hp:secPr`)을 진 문단 하나만 남긴다. 그 문단까지 본문으로 보고
+    잘라 내면 용지가 통째로 날아가므로, 그 회귀도 여기서 잡는다.
+    """
+    parts = _unzip(auto_bullet_form(text))
+    header = parts["Contents/header.xml"].decode("utf-8")
+    for old, new in _STYLE_RENAMES:
+        header = header.replace(old, new)
+    parts["Contents/header.xml"] = header.encode("utf-8")
+
+    section = parts["Contents/section0.xml"].decode("utf-8")
+    keep = [section[a:b] for a, b, _tag in top_level_paragraphs(section)
+            if "<hp:secPr" in section[a:b]]
+    if not keep:
+        raise AssertionError("용지 설정을 진 문단을 찾지 못했다")
+    head = section[:section.index("<hp:p")]
+    parts["Contents/section0.xml"] = (head + "".join(keep) + "</hs:sec>").encode("utf-8")
+    return _zip(parts)
 
 
 def chapter_form(text: str = SAMPLE) -> bytes:

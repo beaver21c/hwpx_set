@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import re
 import subprocess
@@ -23,7 +24,8 @@ from pathlib import Path
 import pytest
 
 from formfixtures import (
-    auto_bullet_form, chapter_form, plain_form, table_note_form)
+    auto_bullet_form, chapter_form, plain_form, styles_only_form,
+    table_note_form)
 from hwpx_studio import formkit
 from hwpx_studio.export_form import BUILDER, FORM_JSON, TEMPLATE, build_bundle, pack_bundle
 
@@ -473,3 +475,111 @@ def test_chapter_number_out_of_range_stops(tmp_path):
     done = _run(bundle, "원고.md", "-o", "결과.hwpx", "--chapter", "99")
     assert done.returncode != 0
     assert "1~12" in done.stdout + done.stderr
+
+
+# ──────────────────────────────────────────────────────────────
+# 본문이 빈 양식 — 스타일 이름으로 읽기
+# ──────────────────────────────────────────────────────────────
+def test_empty_form_falls_back_to_style_names():
+    """스타일만 있고 본문이 빈 양식에서도 레벨을 세운다."""
+    result = formkit.analyze(styles_only_form(), name="빈 양식")
+    levels = result.form["levels"]
+    assert levels, "스타일 이름으로도 레벨을 못 찾았다"
+    assert any("스타일 이름으로 레벨" in n for n in result.notes), result.notes
+    # 근거가 얕다는 것을 숨기지 않는다
+    assert all(lv["seen"] == 0 for lv in levels)
+
+
+def test_auto_bullet_levels_win_the_marker_they_actually_print():
+    """한글이 □를 붙이는 레벨이 □를 가져간다. 근거 없는 레벨에 뺏기면 안 된다."""
+    levels = formkit.analyze(styles_only_form()).form["levels"]
+    by_marker = {lv["marker"]: lv for lv in levels}
+    for marker in ("□", "○", "-"):
+        assert marker in by_marker, f"{marker} 레벨이 없다"
+        assert by_marker[marker]["auto_bullet"], f"{marker}가 근거 없는 레벨에 갔다"
+
+
+def test_body_style_is_left_without_a_marker():
+    """바탕글은 마커 없이 둔다 — 안 붙은 줄이 갈 자리다."""
+    levels = formkit.analyze(styles_only_form()).form["levels"]
+    plain = [lv for lv in levels if not lv["marker"]]
+    assert len(plain) == 1 and plain[0]["style"] == 0, [lv["name"] for lv in plain]
+
+
+def test_page_setup_survives_an_empty_form():
+    """용지 설정을 진 문단에서 자르면 안 된다 — 자르면 문서가 A4로 열린다."""
+    data = styles_only_form()
+    result = formkit.analyze(data)
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        section = zf.read(result.form["section"]).decode("utf-8")
+    preamble = section[:result.form["preamble_bytes"]]
+    assert "<hp:secPr" in preamble, "용지 설정이 잘려 나갔다"
+    assert result.form["page"]["width"] > 0 and result.form["page"]["size"]
+
+
+def test_wingdings_bullets_get_a_typeable_marker():
+    """서식이 쓰는 글자가 사유 영역이어도 부를 이름은 익숙한 기호여야 한다."""
+    from hwpx_studio.formkit import normalize_marker
+
+    assert normalize_marker("⧠") == "□"        # 한글이 네모에 쓰는 글자
+    assert normalize_marker("－") == "-"        # 전각 하이픈
+    assert normalize_marker("") == "·"    # 윙딩스 가운뎃점
+    assert normalize_marker("가") == ""         # 글머리표가 아니면 빈 값
+
+
+def _build_with(form_bytes, source, tmp_path, name="양식"):
+    """꾸러미를 풀고 원고를 넣어 문서를 만든다. (표준출력, 산출 경로)."""
+    files, _result = build_bundle(form_bytes, name=name)
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    for filename, data in files.items():
+        (bundle / filename).write_bytes(data)
+    (bundle / "원고.md").write_text(source, encoding="utf-8")
+    out = bundle / "결과.hwpx"
+    done = subprocess.run(
+        [sys.executable, str(bundle / BUILDER), str(bundle / "원고.md"), "-o", str(out)],
+        capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stdout + done.stderr
+    return done.stdout, out
+
+
+PLAIN_BODY_SOURCE = """# 사업 추진 현황
+## 추진 개요
+첫 번째 서술식 문단이다.
+두 번째 서술식 문단이다.
+□ 개조식 항목
+"""
+
+
+def test_unmarked_lines_become_their_own_paragraphs(tmp_path):
+    """양식에 서술식 본문 자리가 있으면 마커 없는 줄은 새 문단이다.
+
+    앞 문단에 이어 붙이면 두 문단이 한 덩어리가 되어 원고와 다른 글이 나온다.
+    """
+    stdout, out = _build_with(styles_only_form(), PLAIN_BODY_SOURCE, tmp_path)
+    assert "앞 문단에 이어 붙였다" not in stdout, stdout
+    assert "마커가 없는 줄" not in stdout, stdout
+
+    section = _section_of(out)
+    texts = [t for t in re.findall(r"<hp:t>([^<]*)</hp:t>", section) if t.strip()]
+    assert "첫 번째 서술식 문단이다." in texts
+    assert "두 번째 서술식 문단이다." in texts       # 붙지 않고 따로 선다
+
+
+def test_free_levels_do_not_trip_the_jump_check(tmp_path):
+    """본문·참고문헌은 어느 제목 밑에나 온다. 레벨 점프로 잡으면 안 된다."""
+    stdout, _out = _build_with(styles_only_form(), PLAIN_BODY_SOURCE, tmp_path)
+    assert "중간 레벨을 건너뛰었다" not in stdout, stdout
+
+
+def test_page_setup_survives_the_build(tmp_path):
+    """구역 정의를 진 문단에서 자르면 문서가 기본 용지로 열린다."""
+    _stdout, out = _build_with(styles_only_form(), PLAIN_BODY_SOURCE, tmp_path)
+    section = _section_of(out)
+    assert "<hp:secPr" in section, "용지 설정이 사라졌다"
+    assert re.search(r'<hp:pagePr[^>]*width="\d+"', section)
+
+
+def _section_of(path):
+    with zipfile.ZipFile(str(path)) as zf:
+        return zf.read("Contents/section0.xml").decode("utf-8")

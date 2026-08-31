@@ -17,6 +17,43 @@ export const HEADING_MARKERS = ['#', '##', '###', '####'];
 export const FALLBACK_MARKERS = '□○-·※▪◇▶';
 
 /**
+ * 한글이 쓰는 글머리표 글자를 입력에 쓰기 쉬운 마커로 옮긴다(formkit.py 이식).
+ * 서식이 쓰는 실제 글자는 사유 영역이거나(윙딩스) 전각이라 타자로 치기 어렵다.
+ * 문서에 찍히는 기호는 그대로 두고 **부르는 이름**만 바꾸는 것이다.
+ */
+export const MARKER_ALIASES = {
+  '⧠': '□', '❑': '□', '■': '□', '▢': '□',
+  '－': '-', '–': '-', '—': '-', '\uf02d': '-',
+  '\uf09f': '·', '∙': '·', '•': '·', '･': '·', '‧': '·',
+  '◦': '○', '〇': '○', '◯': '○', '\uf0a1': '○',
+};
+
+/** 글머리표 글자 하나를 입력 마커로. 알 수 없으면 빈 문자열. */
+export function normalizeMarker(char) {
+  if (!char) return '';
+  const c = MARKER_ALIASES[char] || char;
+  return BULLET_MARKERS.includes(c) ? c : '';
+}
+
+/**
+ * 이 태그가 든 문단은 본문이 아니라 **구역 정의**다. 스타일이 무엇이든 자른 앞에
+ * 남겨야 한다. 한글은 용지·여백을 `hp:secPr`로 읽고, 이것이 빠지면 문서를
+ * **기본 용지 A4로 연다** — 크라운판(166×241mm) 양식이 통째로 어긋난다.
+ */
+const SECTION_TAGS = ['<hp:secPr', '<hp:colPr'];
+
+/** 본문 레벨로 보지 않는 스타일(표지·간지·판권·목차 따위). */
+const NON_BODY_WORDS = ['면지', '판권', '목차', '발간', '간지', '쪽번호', '머리말',
+  '꼬리말', '제출문', '표지', '타이틀-3줄', '타이틀-번호', '개요'];
+
+/** 따로 자리를 잡아 주는 스타일. 레벨 목록에 넣으면 마커가 겹친다. */
+const SPECIAL_WORDS = ['각주', 'footnote', '표제목', '그림제목', '단위',
+  '표_', '표(', '캡션'];
+
+/** 이보다 큰 글자는 본문 레벨로 보지 않는다(표지·간지의 장 번호가 그 위에 있다). */
+export const MAX_BODY_SIZE_PT = 24.0;
+
+/**
  * 줄머리 기호를 **누가** 붙이는가. 양식마다 다르므로 고를 수 있어야 한다.
  *   auto   — 양식을 보고 정한다
  *   hangul — 한글에 맡긴다. 도구는 본문에 기호를 적지 않는다
@@ -282,7 +319,8 @@ export function paragraphRecords(section) {
 
 export function preambleCut(section, bodyStyles) {
   const wanted = new Set(bodyStyles.map(String));
-  for (const [start, , tag] of topLevelParagraphs(section)) {
+  for (const [start, end, tag] of topLevelParagraphs(section)) {
+    if (SECTION_TAGS.some((t) => section.slice(start, end).includes(t))) continue;
     const m = /styleIDRef="(\d+)"/.exec(tag);
     if (m && wanted.has(m[1])) return start;
   }
@@ -640,40 +678,128 @@ function mostCommon(values) {
   return best;
 }
 
+/**
+ * 레벨마다 입력 마커를 정한다(formkit.py: _assign_markers 이식).
+ *
+ * **근거가 있는 레벨을 먼저 가져간다.** 한 번에 훑으면 앞자리에 온 근거 없는
+ * 레벨이 `□ ○ - ·`를 다 써 버리고, 정작 그 기호를 자동으로 붙이는 레벨에는
+ * 남는 것이 없다. 그래서 두 번 훑는다.
+ */
 function assignMarkers(guesses, notes) {
-  const usedKeys = [];
-  const usedMarkers = new Set();
+  const evidence = [];
   let headingSeq = 0;
-
-  guesses.forEach((g, i) => {
+  for (const g of guesses) {
     let marker = '';
-    if (g.auto_bullet && BULLET_MARKERS.includes(g.auto_bullet[0])) {
-      marker = g.auto_bullet[0];
-    } else if (g.auto_number || (g.prefix || '').startsWith('AUTO_')) {
-      marker = HEADING_MARKERS[Math.min(headingSeq, HEADING_MARKERS.length - 1)];
-      headingSeq += 1;
+    if (g.is_body) {
+      marker = '';                       // 마커 없이 둔다 — 안 붙은 줄이 여기로 온다
+    } else if (g.auto_bullet && normalizeMarker(g.auto_bullet[0])) {
+      marker = normalizeMarker(g.auto_bullet[0]);
+    } else if (g.auto_number || (g.prefix || '').startsWith('AUTO_') || g.name_heading) {
+      marker = '#';                      // 아래에서 깊이 순으로 다시 매긴다
     } else if (g.symbol_in_text) {
       marker = g.symbol_in_text;
+    }
+    evidence.push([g, marker]);
+  }
+
+  const usedMarkers = new Set();
+  for (const [g, raw] of evidence) {
+    let marker = raw;
+    if (marker === '#') {
+      marker = HEADING_MARKERS[Math.min(headingSeq, HEADING_MARKERS.length - 1)];
+      headingSeq += 1;
     }
     if (marker && usedMarkers.has(marker)) {
       notes.push(`마커 '${marker}'가 두 레벨에 겹친다(스타일 ${g.style}·${g.name}) `
         + '→ form.json에서 하나를 바꿀 것');
       marker = '';
     }
-    if (!marker) {
-      marker = [...FALLBACK_MARKERS].find((c) => !usedMarkers.has(c)) || '';
-      if (marker) {
-        g.invented = true;
-        notes.push(`'${g.name}' 레벨에는 기호·번호 근거가 없어 마커를 \`${marker}\`로 `
-          + '임의로 정했다. 이 마커로 부르면 그 스타일이 붙고 기호는 찍히지 않는다 '
-          + '→ form.json에서 바꿔도 된다');
-      }
-    }
     if (marker) usedMarkers.add(marker);
     g.marker = marker;
-    g.key = levelKey(marker || g.name, i, usedKeys);
+  }
+
+  // 근거가 없어 빈 채로 남은 레벨에 남은 기호를 나눠 준다
+  for (const g of guesses) {
+    if (g.marker || g.is_body) continue;
+    const marker = [...FALLBACK_MARKERS].find((c) => !usedMarkers.has(c)) || '';
+    if (marker) {
+      usedMarkers.add(marker);
+      g.invented = true;
+      notes.push(`'${g.name}' 레벨에는 기호·번호 근거가 없어 마커를 \`${marker}\`로 `
+        + '임의로 정했다. 이 마커로 부르면 그 스타일이 붙고 기호는 찍히지 않는다 '
+        + '→ form.json에서 바꿔도 된다');
+    }
+    g.marker = marker;
+  }
+
+  const usedKeys = [];
+  guesses.forEach((g, i) => {
+    g.key = levelKey(g.marker || g.name, i, usedKeys);
     usedKeys.push(g.key);
   });
+}
+
+function isBodyStyle(name, sizePt = 0) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return false;
+  if (sizePt && sizePt > MAX_BODY_SIZE_PT) return false;
+  if (NON_BODY_WORDS.some((w) => trimmed.includes(w))) return false;
+  const low = trimmed.toLowerCase();
+  return !SPECIAL_WORDS.some((w) => trimmed.includes(w) || low.includes(w));
+}
+
+/**
+ * 본문이 빈 양식에서 `header.xml`의 스타일 이름으로 레벨을 세운다
+ * (formkit.py: _levels_from_styles 이식).
+ *
+ * 문단이 없으니 쓰인 횟수도 예시도 없다. 기호는 문단모양에 걸린 자동
+ * 글머리표에서만 읽는다 — 본문에서 찾은 것보다 근거가 얕다.
+ */
+function levelsFromStyles(styleMap, paraMap, charMap, headingMap, bullets,
+  numberings, notes) {
+  const base = styleMap[0] || {};
+  const bodySize = (charMap[base.char_pr || 0] || {}).size_pt ?? 10.5;
+
+  const guesses = [];
+  for (const id of Object.keys(styleMap).map(Number).sort((a, b) => a - b)) {
+    const style = styleMap[id] || {};
+    const name = String(style.name || '').trim();
+    const paraId = style.para_pr || 0;
+    const charId = style.char_pr || 0;
+    const pp = paraMap[paraId] || {};
+    const cp = charMap[charId] || {};
+    const size = cp.size_pt === undefined ? 12.0 : cp.size_pt;
+    if (!isBodyStyle(name, size)) continue;
+    const heading = headingMap[paraId] || {};
+
+    let autoBullet = null;
+    let autoNumber = null;
+    let headingLevel = null;
+    if (heading.type === 'BULLET') {
+      autoBullet = bullets[heading.idRef] || null;
+      headingLevel = heading.level ?? null;
+    } else if (heading.type === 'NUMBER') {
+      const table = numberings[heading.idRef] || {};
+      headingLevel = heading.level ?? null;
+      autoNumber = table[(headingLevel || 0) + 1] || table[1] || null;
+    }
+
+    guesses.push({
+      key: '', marker: '', name, style: id, para: paraId, char: charId,
+      auto_bullet: autoBullet, auto_number: autoNumber, prefix: null,
+      symbol_in_text: null, invented: false, write_override: null,
+      heading_level: headingLevel,
+      size_pt: size,
+      left_pt: pp.left_pt === undefined ? 0.0 : pp.left_pt,
+      name_heading: size > bodySize,
+      is_body: id === 0,
+      seen: 0, samples: [],
+    });
+  }
+  if (!guesses.length) return [];
+  guesses.sort((a, b) => (a.left_pt - b.left_pt) || (b.size_pt - a.size_pt));
+  assignMarkers(guesses, notes);
+  return guesses;
 }
 
 /** 고른 값이 양식과 어긋나면 말한다. 조용히 넘기면 기호가 겹치거나 사라진다. */
@@ -703,8 +829,9 @@ export function applyBulletSource(levels, source, notes) {
 }
 
 function levelDict(g) {
-  const writeMarker = g.write_override === undefined
-    ? (g.symbol_in_text !== null && g.symbol_in_text !== undefined)
+  // `== null`은 undefined와 null을 함께 잡는다. 파이썬의 `is not None`과 짝이다
+  const writeMarker = g.write_override == null
+    ? g.symbol_in_text != null
     : g.write_override;
   const numbering = g.auto_number ? null
     : ((g.prefix || '').startsWith('AUTO_') ? g.prefix : null);
@@ -757,11 +884,25 @@ export function analyzeParts(parts, name = '양식', bullets = 'auto') {
   }
 
   const styleMap = styles(header);
+  const paraMap = paraProps(header);
+  const charMap = charProps(header);
+  const headingMap = headings(header);
+  const bulletMap = bulletChars(header);
+  const numberMap = numberingFormats(header);
   const records = paragraphRecords(section);
-  const guesses = guessLevels(records, styleMap, paraProps(header), charProps(header),
-    headings(header), bulletChars(header), numberingFormats(header), notes);
+  let guesses = guessLevels(records, styleMap, paraMap, charMap,
+    headingMap, bulletMap, numberMap, notes);
   if (!guesses.length) {
-    notes.push('본문 문단을 하나도 찾지 못했다 → 내용이 든 양식 파일인지 확인할 것');
+    guesses = levelsFromStyles(styleMap, paraMap, charMap, headingMap,
+      bulletMap, numberMap, notes);
+    if (guesses.length) {
+      notes.push(`본문이 비어 있어 \`header.xml\`의 스타일 이름으로 레벨 ${guesses.length}개를 `
+        + '세웠다. 쓰인 자리를 못 봤으니 **본문에서 찾은 것보다 근거가 얕다** — '
+        + '레벨 표를 보고 아닌 것은 form.json에서 지울 것');
+    } else {
+      notes.push('본문 문단도 쓸 만한 스타일도 찾지 못했다 '
+        + '→ 내용이 든 양식 파일인지 확인할 것');
+    }
   }
 
   const tableNote = pickTableNote(guesses, records, notes);

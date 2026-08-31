@@ -168,6 +168,19 @@ def _diagram_text_cfg(profile: Dict[str, Any], color: str) -> Dict[str, Any]:
             "spacing_below_pt": 0, "line_spacing": 130, "align": "CENTER"}
 
 
+def _intent(cfg: Dict[str, Any]) -> int:
+    """`hc:intent` 값. 음수는 내어쓰기, 양수는 첫 줄 들여쓰기.
+
+    `indent_pt`는 내어쓰기 폭(양수로 적고 음수로 나간다), `first_line_indent_pt`는
+    첫 줄 들여쓰기다. 둘 다 있으면 내어쓰기가 이긴다 — 한글에서도 한 값이라
+    동시에 줄 수 없다.
+    """
+    hanging = cfg.get("indent_pt") or 0
+    if hanging:
+        return -pt(hanging)
+    return pt(cfg.get("first_line_indent_pt", 0) or 0)
+
+
 def _style_cfgs(profile: Dict[str, Any],
                 extra_keys: Optional[Sequence[str]] = None) -> List[Tuple[str, Dict[str, Any]]]:
     """(key, 스타일 설정) 목록. header 주입 순서와 동일."""
@@ -215,14 +228,46 @@ def patch_template_bytes(profile: Dict[str, Any], ids: IdMap,
     return buf_out.getvalue()
 
 
+#: 이름으로 부를 수 있는 용지. (가로 mm, 세로 mm)
+PAPER_SIZES = {
+    "A4": (210.0, 297.0), "B5": (182.0, 257.0), "A5": (148.0, 210.0),
+    "A3": (297.0, 420.0), "B4": (257.0, 364.0), "Letter": (215.9, 279.4),
+    # 국내 보고서에서 쓰는 판형
+    "크라운": (166.0, 241.0), "크라운판": (166.0, 241.0), "crown": (166.0, 241.0),
+    "신국판": (152.0, 225.0), "국판": (148.0, 210.0), "4x6배판": (188.0, 257.0),
+}
+
+
+def paper_mm(page: Dict[str, Any]) -> Optional[Tuple[float, float]]:
+    """프로파일의 용지 설정 → (가로 mm, 세로 mm). 알 수 없으면 None.
+
+    `width_mm`·`height_mm`를 직접 적으면 그것이 이긴다. 아니면 `size` 이름을 찾는다.
+    """
+    if page.get("width_mm") and page.get("height_mm"):
+        return float(page["width_mm"]), float(page["height_mm"])
+    name = str(page.get("size", "") or "").strip()
+    for key, size in PAPER_SIZES.items():
+        if key.lower() == name.lower():
+            return size
+    return None
+
+
 def _patch_section_margins(xml: str, profile: Dict[str, Any]) -> str:
-    m = profile["page"]["margin_mm"]
+    page = profile["page"]
+    m = page["margin_mm"]
     new_margin = (
         f'<hp:margin header="{mm(m["header"])}" footer="{mm(m["footer"])}" '
         f'gutter="0" left="{mm(m["left"])}" right="{mm(m["right"])}" '
         f'top="{mm(m["top"])}" bottom="{mm(m["bottom"])}"/>'
     )
-    return re.sub(r'<hp:margin header="[^"]*"[^/]*/>', new_margin, xml)
+    xml = re.sub(r'<hp:margin header="[^"]*"[^/]*/>', new_margin, xml)
+
+    size = paper_mm(page)
+    if size is not None:
+        width, height = size
+        xml = re.sub(r'(<hp:pagePr[^>]*?)width="\d+" height="\d+"',
+                     rf'\g<1>width="{mm(width)}" height="{mm(height)}"', xml, count=1)
+    return xml
 
 
 def patch_header(x: str, profile: Dict[str, Any], ids: IdMap,
@@ -246,6 +291,7 @@ def patch_header(x: str, profile: Dict[str, Any], ids: IdMap,
             bool(cfg.get("bold", False)),
             color=cfg.get("color", "#000000") or "#000000",
             font_id=_font_id(cfg.get("font", "light")),
+            letter_spacing=int(cfg.get("letter_spacing", 0) or 0),
         )
         for key, cfg in cfgs
     )
@@ -261,10 +307,11 @@ def patch_header(x: str, profile: Dict[str, Any], ids: IdMap,
         para_pr(
             ids.paras[key],
             left=pt(cfg.get("left_pt", 0)),
-            indent=-pt(cfg.get("indent_pt", 0)) if cfg.get("indent_pt") else 0,
+            indent=_intent(cfg),
             align=cfg.get("align", "JUSTIFY"),
             spacing_below=pt(cfg.get("spacing_below_pt", 0)),
             line_spacing=int(cfg.get("line_spacing", 180)),
+            spacing_above=pt(cfg.get("spacing_above_pt", 0)),
         )
         for key, cfg in cfgs
     )
