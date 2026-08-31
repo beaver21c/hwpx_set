@@ -258,7 +258,7 @@ python skills/build.py -o ~/.claude/skills      # 조립 + 설치
 | `policy-default` | Ⅰ./1./□/○/-/·/※ 7레벨 (기존 생성기와 동일 서식) |
 | `gov-3level` | Ⅰ./1./□/○/- 5레벨, 흑백 |
 | `narrative` | 서술식(제목 + 본문 문단, 첫 줄 들여쓰기) |
-| `kihasa-research` | 연구보고서 — 제N장/제N절/1./가./1), 표·그림 번호는 장을 따라감 |
+| `kihasa-research` | 연구보고서 **크라운판(166×241mm)** — 제N장/제N절/1./가./1), 개조식 □○-·, 표·그림 번호는 장을 따라감. 값은 기관 서식 실측치 |
 
 프로파일 JSON은 `hwpx_studio/profiles/`에 있다(설치본에 함께 들어간다). 규격: `docs/profile-spec.md`
 
@@ -290,6 +290,10 @@ hwpx-studio extract 기준문서.hwpx -o my.json --report report.md
 | 상자가 많을 때 세로 목록형 자동 전환(폭이 늘지 않음) | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
 | 전략체계도(미션·비전·핵심가치·전략과제 단 배치) | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
 | DB 구성도(테이블 상자·필드·PK/FK·관계 화살표) | 확인 (`tests/test_diagram.py`, 두 엔진 대조) |
+| 본문이 빈 양식을 스타일 이름으로 읽기 | 확인 (`tests/test_formkit.py`, 두 엔진 대조) — **실제 기관 서식 1건으로도 확인** |
+| 용지·여백·각주 모양을 실제 기관 서식에서 읽어 내기 | 확인(크라운판 166×241mm 1건, 기관이 낸 실측표와 대조) |
+| 첫 줄 들여쓰기·내어쓰기·자간·문단 위 간격 | 확인 (`tests/test_engine.py`) |
+| 프로파일 용지 이름이 문서에 적용되는가 | 확인 (`tests/test_engine.py`) |
 | 웹 ② 갈래에서 도식만으로 바로 hwpx 내려받기 | 확인 (`tests/test_web_ui.py`, 브라우저) |
 | Mermaid·SVG·HTML 도식 읽기(구조·색·점선) | 확인 (`tests/test_capture.py`) |
 | 각주(쪽 아래·자동 번호·8pt 회색) | 확인 (`tests/test_footnote.py`, 표준 판독기로 재확인 + 두 엔진 대조) |

@@ -72,6 +72,8 @@ DEFAULT_PROFILE: Dict[str, Any] = {
         "line_spacing": 160,
         "align": "JUSTIFY",
         "first_line_indent_pt": 0,
+        "spacing_above_pt": 0,
+        "letter_spacing": 0,
     },
     "table": {
         "border_color": "#999999",

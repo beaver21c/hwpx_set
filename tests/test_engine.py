@@ -134,3 +134,65 @@ def test_unnumbered_levels_do_not_trip_the_outline_check():
     parsed = parse_text("# 장\n본문이다.\n#### 가 제목\n※ 주: 딸린 줄이다.\n", profile)
     issues = lint_items(parsed.items, profile, parsed.line_of, parsed.warnings)
     assert not [i for i in issues if i.code == "jump"], [i.format() for i in issues]
+
+
+# ──────────────────────────────────────────────────────────────
+# 문단·글자 모양이 실제로 XML까지 가는가
+# ──────────────────────────────────────────────────────────────
+def _para_and_char(profile, source, needle):
+    """`needle`이 든 문단의 (paraPr XML, charPr XML)."""
+    parsed = parse_text(source, profile)
+    data = build_document(profile, parsed.items).data
+    header = read_part(data, "Contents/header.xml")
+    section = read_part(data, "Contents/section0.xml")
+    look = r"(?=(?:(?!</hp:p>).)*" + re.escape(needle) + ")"
+    tag = re.search(r"<hp:p [^>]*>" + look, section, re.S).group(0)
+    pid = re.search(r'paraPrIDRef="(\d+)"', tag).group(1)
+    cid = re.search(r'<hp:run charPrIDRef="(\d+)"' + look, section, re.S).group(1)
+    return (re.search(r'<hh:paraPr id="%s"[ >].*?</hh:paraPr>' % pid, header, re.S).group(0),
+            re.search(r'<hh:charPr id="%s"[ >].*?</hh:charPr>' % cid, header, re.S).group(0))
+
+
+def test_body_first_line_indent_reaches_the_document():
+    """`first_line_indent_pt`가 선언만 되고 버려지면 서술식 서식이 무너진다."""
+    profile = load_profile(str(_PROFILES / "narrative.json"))
+    para, _char = _para_and_char(profile, "# 제목\n\n서술식 본문이다.\n", "서술식 본문이다.")
+    intent = int(re.search(r'<hc:intent value="(-?\d+)"', para).group(1))
+    assert intent == 1000, f"첫 줄 들여쓰기 10pt가 안 들어갔다: {intent}"
+
+
+def test_hanging_indent_goes_in_negative():
+    """내어쓰기는 음수 intent다. 첫 줄 들여쓰기와 한 값을 다툰다."""
+    profile = merge_profile(load_profile(str(_PROFILES / "narrative.json")))
+    profile["body"]["indent_pt"] = 12
+    para, _char = _para_and_char(profile, "# 제목\n\n서술식 본문이다.\n", "서술식 본문이다.")
+    assert '<hc:intent value="-1200"' in para
+
+
+def test_letter_spacing_and_space_above_reach_the_document():
+    profile = merge_profile(load_profile(str(_PROFILES / "narrative.json")))
+    profile["body"]["letter_spacing"] = -2
+    profile["body"]["spacing_above_pt"] = 15
+    para, char = _para_and_char(profile, "# 제목\n\n서술식 본문이다.\n", "서술식 본문이다.")
+    assert '<hh:spacing hangul="-2"' in char
+    assert '<hc:prev value="1500"' in para
+
+
+def test_page_size_from_the_profile_reaches_the_document():
+    """용지 이름이 선언만 되고 안 쓰이면 크라운판이 A4로 나간다."""
+    from hwpx_studio.units import mm
+
+    profile = _research_profile()
+    parsed = parse_text("### 제목\n본문이다.\n", profile)
+    section = read_part(build_document(profile, parsed.items).data, "Contents/section0.xml")
+    width, height = re.search(r'width="(\d+)" height="(\d+)"', section).groups()
+    assert (int(width), int(height)) == (mm(166), mm(241)), "용지가 크라운판이 아니다"
+
+
+def test_paper_names_cover_the_korean_report_sizes():
+    from hwpx_studio.engine import paper_mm
+
+    assert paper_mm({"size": "크라운판"}) == (166.0, 241.0)
+    assert paper_mm({"size": "A4"}) == (210.0, 297.0)
+    assert paper_mm({"width_mm": 166, "height_mm": 241}) == (166.0, 241.0)
+    assert paper_mm({"size": "없는판형"}) is None      # 모르면 손대지 않는다

@@ -47,6 +47,24 @@ HEADING_MARKERS = ["#", "##", "###", "####"]
 #: 기호 근거가 없는 레벨에 임의로 줄 마커. 입력에서 부를 수단일 뿐 찍히지는 않는다.
 FALLBACK_MARKERS = "□○-·※▪◇▶"
 
+#: 한글이 쓰는 글머리표 글자를 입력에 쓰기 쉬운 마커로 옮긴다.
+#: 서식이 쓰는 실제 글자는 유니코드 사유 영역이거나(윙딩스) 전각이라 타자로 치기
+#: 어렵다. 문서에 찍히는 기호는 그대로 두고, **부르는 이름**만 바꾸는 것이다.
+MARKER_ALIASES = {
+    "⧠": "□", "❑": "□", "■": "□", "▢": "□",
+    "－": "-", "–": "-", "—": "-", "\uf02d": "-",
+    "\uf09f": "·", "∙": "·", "•": "·", "･": "·", "‧": "·",
+    "◦": "○", "〇": "○", "◯": "○", "\uf0a1": "○",
+}
+
+
+def normalize_marker(char: str) -> str:
+    """글머리표 글자 하나를 입력 마커로. 알 수 없는 글자면 빈 문자열."""
+    if not char:
+        return ""
+    char = MARKER_ALIASES.get(char, char)
+    return char if char in BULLET_MARKERS else ""
+
 #: 줄머리 기호를 **누가** 붙이는가. 양식마다 다르므로 고를 수 있어야 한다.
 #:
 #:   auto   — 양식을 보고 정한다(한글이 붙이면 한글에, 텍스트에 적혀 있으면 도구에)
@@ -79,6 +97,8 @@ class LevelGuess:
     prefix: Optional[str] = None           # 본문 텍스트에 직접 적힌 번호 유형
     symbol_in_text: Optional[str] = None   # 본문 텍스트에 직접 적힌 기호
     invented: bool = False                 # 근거 없이 도구가 정해 준 마커인가
+    name_heading: bool = False             # 이름·크기로 미루어 제목 레벨인가
+    is_body: bool = False                  # 마커 없는 줄이 갈 본문 레벨인가
     write_override: Optional[bool] = None  # 기호를 누가 붙이는지 사람이 고른 값
     heading_level: Optional[int] = None
     size_pt: float = 12.0
@@ -561,13 +581,24 @@ def _pick_table_note(levels: List[LevelGuess], records: Sequence[ParaRecord],
 # ──────────────────────────────────────────────────────────────
 # 프리앰블(보존 구간) 경계
 # ──────────────────────────────────────────────────────────────
+#: 이 태그가 든 문단은 본문이 아니라 **구역 정의**다. 스타일이 무엇이든 자른 앞에
+#: 남겨야 한다. 한글은 용지·여백을 `hp:secPr`로 읽고, 이것이 빠지면 문서를
+#: **기본 용지 A4로 연다** — 크라운판(166×241mm) 양식이 통째로 어긋난다.
+_SECTION_TAGS = ("<hp:secPr", "<hp:colPr")
+
+
 def preamble_cut(section_xml: str, body_styles: Sequence[int]) -> int:
     """본문 스타일이 처음 나오는 최상위 문단의 시작 위치.
 
     그 앞(용지 설정 `secPr`, 표지, 장 제목 상자)은 그대로 두고 뒤만 갈아 끼운다.
+
+    구역 정의를 담은 문단은 건너뛴다. 빈 양식은 본문 문단이 하나뿐이고 그 하나가
+    용지 설정을 지고 있는 일이 흔한데, 거기서 자르면 용지가 날아간다.
     """
     wanted = {str(s) for s in body_styles}
-    for start, _end, tag in top_level_paragraphs(section_xml):
+    for start, end, tag in top_level_paragraphs(section_xml):
+        if any(t in section_xml[start:end] for t in _SECTION_TAGS):
+            continue
         m = re.search(r'styleIDRef="(\d+)"', tag)
         if m and m.group(1) in wanted:
             return start
@@ -649,38 +680,135 @@ def _guess_levels(records: Sequence[ParaRecord], styles, para_props, char_props,
     return guesses
 
 
+#: 본문 레벨로 보지 않는 스타일. 표지·간지·판권·목차·머리말 따위는 양식이 그대로
+#: 들고 있는 자리이지 원고에서 부를 레벨이 아니다.
+_NON_BODY_WORDS = ("면지", "판권", "목차", "발간", "간지", "쪽번호", "머리말", "꼬리말",
+                   "제출문", "표지", "타이틀-3줄", "타이틀-번호", "개요")
+
+#: 따로 자리를 잡아 주는 스타일. 레벨 목록에 넣으면 마커가 겹친다.
+_SPECIAL_WORDS = ("각주", "footnote", "표제목", "그림제목", "단위",
+                  "표_", "표(", "캡션")
+
+#: 이보다 큰 글자는 본문 레벨로 보지 않는다. 표지·간지의 장 번호가 이 위에 있다
+#: (크라운판은 간지 장번호가 27·62pt, 본문에서 제일 큰 장 제목이 18pt다).
+MAX_BODY_SIZE_PT = 24.0
+
+
+def _is_body_style(name: str, size_pt: float = 0.0) -> bool:
+    low = name.strip().lower()
+    if not low:
+        return False
+    if size_pt and size_pt > MAX_BODY_SIZE_PT:
+        return False
+    if any(w in name for w in _NON_BODY_WORDS):
+        return False
+    return not any(w in name or w in low for w in _SPECIAL_WORDS)
+
+
+def _levels_from_styles(styles, para_props, char_props, headings, bullets,
+                        numberings, notes: List[str]) -> List[LevelGuess]:
+    """본문이 빈 양식에서 `header.xml`의 스타일 이름으로 레벨을 세운다.
+
+    스타일만 정의해 두고 본문은 비워 둔 서식 파일이 흔하다(기관에서 나눠 주는
+    '빈 양식'이 대개 그렇다). 문단을 근거로 찾으면 하나도 안 나오므로, 그럴 때만
+    쓰는 폴백이다.
+
+    문단이 없으니 **쓰인 횟수도 예시도 없다.** 기호는 문단모양에 걸린 자동
+    글머리표(`hh:heading type="BULLET"`)에서만 읽는다. 그래서 이 경로로 나온
+    레벨은 본문에서 찾은 것보다 근거가 얕다 — 보고서에 그렇게 적는다.
+    """
+    # 바탕글(스타일 0)보다 큰 글자는 제목으로 본다
+    base = styles.get(0, {})
+    body_size = char_props.get(base.get("char_pr", 0), {}).get("size_pt", 10.5)
+
+    guesses: List[LevelGuess] = []
+    for style_id, style in sorted(styles.items()):
+        name = (style.get("name") or "").strip()
+        para_id = style.get("para_pr", 0)
+        char_id = style.get("char_pr", 0)
+        pp = para_props.get(para_id, {})
+        cp = char_props.get(char_id, {})
+        if not _is_body_style(name, cp.get("size_pt", 0.0)):
+            continue
+        heading = headings.get(para_id, {})
+
+        auto_bullet = auto_number = heading_level = None
+        if heading.get("type") == "BULLET":
+            auto_bullet = bullets.get(heading["id_ref"])
+            heading_level = heading.get("level")
+        elif heading.get("type") == "NUMBER":
+            table = numberings.get(heading["id_ref"], {})
+            heading_level = heading.get("level")
+            auto_number = table.get((heading_level or 0) + 1) or table.get(1)
+
+        guesses.append(LevelGuess(
+            key="", marker="", name=name, style=style_id, para=para_id, char=char_id,
+            auto_bullet=auto_bullet, auto_number=auto_number, heading_level=heading_level,
+            size_pt=cp.get("size_pt", 12.0), left_pt=pp.get("left_pt", 0.0),
+            name_heading=cp.get("size_pt", 0.0) > body_size,
+            is_body=style_id == 0,          # 바탕글은 마커 없는 줄이 가는 자리
+            count=0, samples=[],
+        ))
+
+    if not guesses:
+        return []
+    guesses.sort(key=lambda g: (g.left_pt, -g.size_pt))
+    _assign_markers(guesses, notes)
+    return guesses
+
+
 def _assign_markers(guesses: List[LevelGuess], notes: List[str]) -> None:
-    """레벨마다 입력 마커를 정한다. 한글이 붙이는 기호가 있으면 그 기호를 쓴다."""
-    used_keys: List[str] = []
-    used_markers: set = set()
-    heading_seq = 0
+    """레벨마다 입력 마커를 정한다. 한글이 붙이는 기호가 있으면 그 기호를 쓴다.
+
+    **근거가 있는 레벨을 먼저 가져간다.** 한 번에 훑으면, 앞자리에 온 근거 없는
+    레벨이 `□ ○ - ·`를 다 써 버리고 정작 그 기호를 자동으로 붙이는 레벨에는
+    남는 것이 없다. 그래서 두 번 훑는다.
+    """
+    evidence: List[Tuple[int, LevelGuess, str]] = []
     for i, g in enumerate(guesses):
         marker = ""
-        if g.auto_bullet and g.auto_bullet[0] in BULLET_MARKERS:
-            marker = g.auto_bullet[0]
-        elif g.auto_number or (g.prefix or "").startswith("AUTO_"):
-            marker = HEADING_MARKERS[min(heading_seq, len(HEADING_MARKERS) - 1)]
-            heading_seq += 1
+        if g.is_body:
+            pass                               # 마커 없이 둔다 — 안 붙은 줄이 여기로 온다
+        elif g.auto_bullet and normalize_marker(g.auto_bullet[0]):
+            marker = normalize_marker(g.auto_bullet[0])
+        elif g.auto_number or (g.prefix or "").startswith("AUTO_") or g.name_heading:
+            marker = "#"                       # 아래에서 깊이 순으로 다시 매긴다
         elif g.samples:
             lead = g.samples[0][:1]
-            if lead in BULLET_MARKERS and g.samples[0][1:2] in (" ", " "):
+            if lead in BULLET_MARKERS and g.samples[0][1:2] in (" ", "\u3000"):
                 marker = lead
+        evidence.append((i, g, marker))
+
+    used_markers: set = set()
+    heading_seq = 0
+    for _i, g, marker in evidence:
+        if marker == "#":
+            marker = HEADING_MARKERS[min(heading_seq, len(HEADING_MARKERS) - 1)]
+            heading_seq += 1
         if marker and marker in used_markers:
             notes.append(f"마커 {marker!r}가 두 레벨에 겹친다"
                          f"(스타일 {g.style}·{g.name}) → form.json에서 하나를 바꿀 것")
             marker = ""
-        if not marker:
-            # 근거가 없는 레벨. 그래도 입력에서 부를 수단은 있어야 한다.
-            marker = next((c for c in FALLBACK_MARKERS if c not in used_markers), "")
-            if marker:
-                g.invented = True
-                notes.append(f"'{g.name}' 레벨에는 기호·번호 근거가 없어 마커를 "
-                             f"`{marker}`로 임의로 정했다. 이 마커로 부르면 그 스타일이 "
-                             "붙고 기호는 찍히지 않는다 → form.json에서 바꿔도 된다")
         if marker:
             used_markers.add(marker)
         g.marker = marker
-        g.key = _level_key(marker or g.name, i, used_keys)
+
+    # 근거가 없어 빈 채로 남은 레벨에 남은 기호를 나눠 준다
+    for g in guesses:
+        if g.marker or g.is_body:
+            continue
+        marker = next((c for c in FALLBACK_MARKERS if c not in used_markers), "")
+        if marker:
+            used_markers.add(marker)
+            g.invented = True
+            notes.append(f"'{g.name}' 레벨에는 기호·번호 근거가 없어 마커를 "
+                         f"`{marker}`로 임의로 정했다. 이 마커로 부르면 그 스타일이 "
+                         "붙고 기호는 찍히지 않는다 → form.json에서 바꿔도 된다")
+        g.marker = marker
+
+    used_keys: List[str] = []
+    for i, g in enumerate(guesses):
+        g.key = _level_key(g.marker or g.name, i, used_keys)
         used_keys.append(g.key)
 
 
@@ -765,7 +893,16 @@ def analyze(source: Any, name: str = "", bullets: str = "auto") -> FormResult:
                            headings, bullet_chars, numberings, notes)
 
     if not levels:
-        notes.append("본문 문단을 하나도 찾지 못했다 → 내용이 든 양식 파일인지 확인할 것")
+        levels = _levels_from_styles(styles, para_props, char_props,
+                                     headings, bullet_chars, numberings, notes)
+        if levels:
+            notes.append(
+                f"본문이 비어 있어 `header.xml`의 스타일 이름으로 레벨 {len(levels)}개를 "
+                "세웠다. 쓰인 자리를 못 봤으니 **본문에서 찾은 것보다 근거가 얕다** — "
+                "레벨 표를 보고 아닌 것은 form.json에서 지울 것")
+        else:
+            notes.append("본문 문단도 쓸 만한 스타일도 찾지 못했다 "
+                         "→ 내용이 든 양식 파일인지 확인할 것")
     table_note = _pick_table_note(levels, records, notes)
     apply_bullet_source(levels, bullets, notes)
 

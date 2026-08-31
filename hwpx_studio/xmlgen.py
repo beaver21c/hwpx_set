@@ -18,9 +18,15 @@ def char_pr(
     color: str = "#000000",
     font_id: int = 0,
     border_fill_id: int = 2,
+    letter_spacing: int = 0,
 ) -> str:
+    """글자모양 하나. `letter_spacing`은 자간(%)이다 — 한글의 '자간' 값과 같은 눈금.
+
+    음수가 좁히는 쪽이다(크라운 서식은 -2 ~ -5를 쓴다).
+    """
     b = ' bold="1"' if bold else ""
     fid = str(font_id)
+    ls = int(letter_spacing)
     return (
         f'<hh:charPr id="{id_val}" height="{pt(size_pt)}" textColor="{color}" '
         f'shadeColor="none" useFontSpace="0" useKerning="0" symMark="NONE" '
@@ -28,7 +34,8 @@ def char_pr(
         f'<hh:fontRef hangul="{fid}" latin="{fid}" hanja="{fid}" japanese="{fid}" '
         f'other="{fid}" symbol="{fid}" user="{fid}"/>'
         f'<hh:ratio hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>'
-        f'<hh:spacing hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>'
+        f'<hh:spacing hangul="{ls}" latin="{ls}" hanja="{ls}" japanese="{ls}" '
+        f'other="{ls}" symbol="{ls}" user="{ls}"/>'
         f'<hh:relSz hangul="100" latin="100" hanja="100" japanese="100" other="100" symbol="100" user="100"/>'
         f'<hh:offset hangul="0" latin="0" hanja="0" japanese="0" other="0" symbol="0" user="0"/>'
         f'<hh:underline type="NONE" shape="SOLID" color="#000000"/>'
@@ -47,13 +54,18 @@ def para_pr(
     spacing_below: int = 0,
     line_spacing: int = 180,
     border_fill_id: int = 2,
+    spacing_above: int = 0,
 ) -> str:
+    """문단모양 하나.
+
+    `indent`가 음수면 내어쓰기, 양수면 첫 줄 들여쓰기다(한글의 `hc:intent`가 그렇다).
+    """
     body = (
         f"<hh:margin>"
         f'<hc:intent value="{indent}" unit="HWPUNIT"/>'
         f'<hc:left value="{left}" unit="HWPUNIT"/>'
         f'<hc:right value="0" unit="HWPUNIT"/>'
-        f'<hc:prev value="0" unit="HWPUNIT"/>'
+        f'<hc:prev value="{spacing_above}" unit="HWPUNIT"/>'
         f'<hc:next value="{spacing_below}" unit="HWPUNIT"/>'
         f"</hh:margin>"
         f'<hh:lineSpacing type="PERCENT" value="{line_spacing}" unit="HWPUNIT"/>'
