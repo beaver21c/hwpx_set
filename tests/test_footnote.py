@@ -14,8 +14,8 @@ from hwpx_studio.profile import merge_profile, validate_profile
 SAMPLE = """□ 노인 빈곤율은 40.4%로 가장 높다[^1]
 ○ 두 번째 근거[^2]와 세 번째 근거[^3]
 
-[^1]: 통계청(2024), 「가계금융복지조사」.
-[^2]: 보건복지부(2025).
+[^1]: ○○청(2024), 「연간 실태조사」.
+[^2]: ○○부(2025).
 [^3]: OECD(2024), Pensions at a Glance.
 """
 
@@ -47,7 +47,7 @@ def test_reference_and_definition_are_joined(policy):
     result = parse_text(SAMPLE, policy)
     first = result.items[0]
     assert first["text"] == "노인 빈곤율은 40.4%로 가장 높다"      # 자리표는 본문에서 빠진다
-    assert [n["text"] for n in first["notes"]] == ["통계청(2024), 「가계금융복지조사」."]
+    assert [n["text"] for n in first["notes"]] == ["○○청(2024), 「연간 실태조사」."]
     assert not result.warnings
 
 
@@ -66,7 +66,7 @@ def test_two_notes_in_one_paragraph_keep_their_order(policy):
 
 def test_definition_line_makes_no_paragraph(policy):
     items = parse_text(SAMPLE, policy).items
-    assert all("통계청" not in str(item.get("text", "")) for item in items)
+    assert all("○○청" not in str(item.get("text", "")) for item in items)
     assert [i["type"] for i in items] == ["para", "para", "blank"]
 
 
@@ -157,8 +157,8 @@ def test_bad_footnote_profile_is_caught(policy, bad, needle):
 def test_document_carries_every_note_numbered_in_order(policy):
     data = build_document(policy, parse_text(SAMPLE, policy).items).data
     assert notes_of(data) == [
-        ("1", "통계청(2024), 「가계금융복지조사」."),
-        ("2", "보건복지부(2025)."),
+        ("1", "○○청(2024), 「연간 실태조사」."),
+        ("2", "○○부(2025)."),
         ("3", "OECD(2024), Pensions at a Glance."),
     ]
 
@@ -183,7 +183,7 @@ def test_notes_read_back_with_python_hwpx(policy, tmp_path):
     doc = HwpxDocument.open(str(out))
     found = [note for para in doc.sections[0].paragraphs for note in para.footnotes]
     assert len(found) == 3
-    assert "가계금융복지조사" in found[0].text
+    assert "연간 실태조사" in found[0].text
 
 
 def test_auto_numbered_heading_prefix_does_not_shift_the_number(policy):

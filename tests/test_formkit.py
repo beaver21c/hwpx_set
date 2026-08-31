@@ -38,7 +38,7 @@ SAMPLE_INPUT = """# 사업 추진 현황
 |---|---|---|
 | 처리 건수 | 1,204건 | 1,388건 |
 
-[^1]: 통계청(2025), 「행정통계」, 87쪽.
+[^1]: ○○청(2025), 「행정통계」, 87쪽.
 """
 
 
@@ -226,7 +226,7 @@ def test_table_and_footnote_survive_a_round_trip(tmp_path):
     paragraphs = list(doc.paragraphs)
     notes = [n for p in paragraphs for n in getattr(p, "footnotes", [])]
     assert len(notes) == 1
-    assert "통계청" in notes[0].text
+    assert "○○청" in notes[0].text
     with zipfile.ZipFile(out) as z:
         section = z.read("Contents/section0.xml").decode("utf-8")
     assert section.count("<hp:tbl ") == 1
@@ -432,7 +432,7 @@ def test_table_note_lands_in_its_own_style(tmp_path):
     bundle = _bundle(tmp_path, table_note_form(), "표주")
     (bundle / "원고.md").write_text(
         "□ 실적\n\n| 구분 | 값 |\n|---|---|\n| 합계 | 100 |\n"
-        "※ 자료：통계청(2025).\n\n", encoding="utf-8")
+        "※ 자료：○○청(2025).\n\n", encoding="utf-8")
     done = _run(bundle, "원고.md", "-o", "결과.hwpx")
     assert done.returncode == 0, done.stdout
     assert "표 뒤에 빈 줄이 없다" not in done.stdout, "표 주는 표에 딸린 줄이다"
@@ -441,7 +441,7 @@ def test_table_note_lands_in_its_own_style(tmp_path):
     with zipfile.ZipFile(bundle / "결과.hwpx") as z:
         section = z.read("Contents/section0.xml").decode("utf-8")
     note_style = form["table_note"]["style"]
-    assert re.search(rf'styleIDRef="{note_style}"[^>]*>.*?자료：통계청', section, re.S)
+    assert re.search(rf'styleIDRef="{note_style}"[^>]*>.*?자료：○○청', section, re.S)
 
 
 def test_table_note_away_from_a_table_is_reported(tmp_path):

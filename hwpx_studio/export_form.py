@@ -88,13 +88,13 @@ def _sample_text(form: Dict[str, Any]) -> str:
               "| 평균 처리 기간 | 14일 | 11일 |"]
     note = form.get("table_note")
     if note:
-        lines.append(f"{note.get('marker', '※')} 자료：통계청(2025), 「행정통계」.")
+        lines.append(f"{note.get('marker', '※')} 자료：○○청(2025), 「행정통계」.")
     lines.append("")
     first_marker = next((lv["marker"] for lv in form.get("levels", [])
                          if lv.get("marker") and not lv["marker"].startswith("#")), "")
     if form.get("footnote"):
         lines += [f"{first_marker} 처리 기간이 3일 줄었다[^1]".strip(), "",
-                  "[^1]: 통계청(2025), 「행정통계」, 87쪽."]
+                  "[^1]: ○○청(2025), 「행정통계」, 87쪽."]
     return "\n".join(lines) + "\n"
 
 
