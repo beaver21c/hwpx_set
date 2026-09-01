@@ -369,9 +369,9 @@ const DIAGRAM_SAMPLES = [
     why: '왼쪽이 단 이름, 오른쪽이 칸들. | 로 시작하면 위 단의 다음 줄입니다.',
     source: `:::diagram type=strategy title="경영전략 체계도" label_width=24
 미션 {fill=#17375E color=#FFFFFF} | 국민의 삶의 질 향상에 기여한다 {fill=#EAEFF9 color=#17375E}
-핵심가치 {fill=#3EA9A9 color=#FFFFFF} | 공감 | 안전 | 공정 | 신뢰
-4대 전략방향 {fill=#5CBF7A color=#FFFFFF} | 분쟁해결 | 안전환경 | 거래환경 | 혁신경영
-| 피해 회복 | 위해요인 탐지 | 거래 감시 | ESG 경영
+핵심가치 {fill=#3EA9A9 color=#FFFFFF} | 존중 | 연계 | 형평 | 신뢰
+4대 전략방향 {fill=#5CBF7A color=#FFFFFF} | 대상자 발굴 | 서비스 연계 | 전달체계 | 돌봄 현장
+| 위기가구 발굴 | 퇴원지원 연계 | 통합창구 운영 | 처우 개선
 :::`,
   },
 ];
