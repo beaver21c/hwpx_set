@@ -107,7 +107,7 @@ hwpx-studio capture examples/capture/org.mmd --title "위원회 구성" --hwpx �
 > ```
 
 자세한 건 `docs/diagram-guide.md`. 어디까지 닮게 만들 수 있고 무엇이 안 되는지는
-`docs/diagram-capture-review.md`에 정리해 두었다.
+되는 범위와 한계는 아래 표와 `docs/diagram-guide.md`에 정리해 두었다.
 
 ## 3분 시작
 
@@ -232,7 +232,7 @@ python skills/build.py -o ~/.claude/skills      # 조립 + 설치
 - 기존 절차의 처리 기간이 길어 이용자 불편이 누적
 ※ 세부 내용은 별도 자료로 정리
 
-[^1]: 국무조정실(2024), 「규제혁신 추진계획」.
+[^1]: ○○실(2024), 「연도별 추진계획」.
 
 | 구분 | 목표 | 실적 |
 |---|---|---|
@@ -300,6 +300,8 @@ hwpx-studio extract 기준문서.hwpx -o my.json --report report.md
 | 각주 번호 자리 검사(붙여쓰기·마침표·인용부호·제목) | 확인 (`tests/test_footnote.py`) |
 | 미주 | 미구현 — `docs/footnote-guide.md` §5 |
 | 그림(PNG·스캔)에서 도식 읽기 | 미구현 — AI에게 받아쓰게 하는 우회는 `docs/diagram-guide.md` §4 |
+| PPTX·PDF·한글 그리기 개체에서 도식 읽기 | 미구현 — Mermaid·SVG·HTML만 읽는다 |
+| 도식 상자마다 다른 글자 크기·굵기 | 미구현 — 색은 상자별로 되지만 크기·굵기는 도식 전체 하나다 |
 | 한글 화면에서 한 변 테두리 연결선 표시 | 확인(한글 모바일 뷰어) — `prototypes/README.md` |
 | 한글로 직접 작성한 실제 문서의 추출 정확도 | 확인(1건) — 7레벨 전부 복원, 아래 참조 |
 | 머리말·쪽번호 | 미구현 |
@@ -322,7 +324,6 @@ HWPX_LEGACY_GENERATOR=/path/to/hwpx_generator.py pytest tests/test_parity.py
 - `docs/writing-guide.md` — 본문 작성법
 - `docs/diagram-guide.md` — 도식 작성법
 - `docs/footnote-guide.md` — 각주 다는 법과 번호 자리
-- `docs/diagram-capture-review.md` — 문서·웹 도식을 인식해 표로 재현하는 도구 검토
 - `docs/profile-spec.md` — 프로파일 JSON 규격
 - `skills/hwpx-report-studio/` — 에이전트 스킬(집필 규칙 + 도식)
 - `docs/spec.md` — 설계 명세(원안)

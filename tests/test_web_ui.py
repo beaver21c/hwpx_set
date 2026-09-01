@@ -289,7 +289,7 @@ def test_footnote_survives_the_browser_build(browser, server, tmp_path):
 
     page, problems = open_page(browser, server)
     page.fill("#body-text",
-              "□ 근거가 있는 문장이다[^1]\n○ 두 번째 항목\n\n[^1]: 통계청(2024).\n")
+              "□ 근거가 있는 문장이다[^1]\n○ 두 번째 항목\n\n[^1]: ○○청(2024).\n")
     with page.expect_download() as download:
         page.click("#build")
     saved = tmp_path / "footnote.hwpx"
@@ -299,7 +299,7 @@ def test_footnote_survives_the_browser_build(browser, server, tmp_path):
         section = zf.read("Contents/section0.xml").decode("utf-8")
         header = zf.read("Contents/header.xml").decode("utf-8")
     note = re.search(r"<hp:footNote .*?</hp:footNote>", section, re.S)
-    assert note and "통계청(2024)." in note.group()
+    assert note and "○○청(2024)." in note.group()
     assert "[^1]" not in section                      # 자리표는 본문에 남지 않는다
     char_id = re.search(r'<hh:style id="\d+"[^>]*name="각주"[^>]*charPrIDRef="(\d+)"',
                         header).group(1)

@@ -28,7 +28,7 @@ _TABLE_SEP_RE = re.compile(r"^\|[\s:|-]+\|$")
 _FENCE_RE = re.compile(r"^:::\s*(?:diagram)?\s*(.*)$")
 #: 본문 안 각주 번호 자리표(`앞말[^1]`)
 FOOTNOTE_REF_RE = re.compile(r"\[\^([^\]\s]+)\]")
-#: 각주 내용을 적는 줄(`[^1]: 통계청, …`)
+#: 각주 내용을 적는 줄(`[^1]: ○○청, …`)
 FOOTNOTE_DEF_RE = re.compile(r"^\[\^([^\]\s]+)\]:\s*(.*)$")
 
 

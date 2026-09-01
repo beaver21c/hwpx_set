@@ -92,7 +92,7 @@ export function sampleText(form) {
     (lv) => lv.marker && !lv.marker.startsWith('#'));
   if (form.footnote) {
     lines.push(`${first ? first.marker : ''} 처리 기간이 3일 줄었다[^1]`.trim(), '',
-      '[^1]: 통계청(2025), 「행정통계」, 87쪽.');
+      '[^1]: ○○청(2025), 「행정통계」, 87쪽.');
   }
   return `${lines.join('\n')}\n`;
 }
