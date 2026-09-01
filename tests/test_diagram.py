@@ -317,8 +317,8 @@ def test_side_layout_reaches_the_document(policy, tmp_path):
 # 전략체계도
 # ──────────────────────────────────────────────────────────────
 STRATEGY = """미션 {fill=#17375E color=#FFF} | 국민의 삶의 질 향상에 기여한다
-비전 | 공정하고 안전한 소비환경
-핵심가치 | 공감 | 안전 | 공정 | 신뢰
+비전 | 누구도 빠지지 않는 지역사회
+핵심가치 | 존중 | 연계 | 형평 | 신뢰
 경영목표 | 65,000건 {border=none} | 90% {border=none} | 900건 {border=none} | 1등급 {border=none}
 | 2,200건 {border=none} | 800건 {border=none} | 900건 {border=none} | 100% {border=none}
 4대 전략방향 {link=none} | 가 | 나 | 다 | 라"""
@@ -331,14 +331,14 @@ def strategy_grid(policy, lines=None, header="type=strategy"):
 def test_strategy_lays_bands_out_with_a_label_column(policy):
     b = boxes(strategy_grid(policy))
     assert b["미션"].col == 0 and b["핵심가치"].col == 0     # 라벨은 왼쪽 열
-    assert b["공감"].col > 0 and b["신뢰"].col > b["공감"].col
-    assert b["미션"].row < b["공감"].row < b["가"].row      # 위에서 아래로
+    assert b["존중"].col > 0 and b["신뢰"].col > b["존중"].col
+    assert b["미션"].row < b["존중"].row < b["가"].row      # 위에서 아래로
 
 
 def test_strategy_single_cell_band_spans_all_columns(policy):
     grid = strategy_grid(policy)
     b = boxes(grid)
-    assert b["국민의 삶의 질 향상에 기여한다"].col_span > b["공감"].col_span
+    assert b["국민의 삶의 질 향상에 기여한다"].col_span > b["존중"].col_span
     assert b["국민의 삶의 질 향상에 기여한다"].col_span == grid.cols - 1
 
 
@@ -377,7 +377,7 @@ def test_strategy_link_none_skips_the_connector(policy):
 def test_strategy_border_none_makes_a_plain_text_cell(policy):
     b = boxes(strategy_grid(policy))
     assert b["65,000건"].borders == () and b["65,000건"].fill is None
-    assert b["공감"].borders and b["공감"].fill                # 나머지는 그대로 상자
+    assert b["존중"].borders and b["존중"].fill                # 나머지는 그대로 상자
 
 
 def test_strategy_reaches_the_document(policy, tmp_path):
