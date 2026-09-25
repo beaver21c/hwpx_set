@@ -502,7 +502,7 @@ def test_skill_lane_is_the_front_door(browser, server):
     page = browser.new_page(viewport={"width": 420, "height": 900})
     page.goto(server, wait_until="networkidle")
     assert page.is_visible('[data-panel="skill"]'), "처음 열면 스킬 만들기가 보여야 한다"
-    assert page.input_value("#skill-preset") == "kihasa-research", "기본은 크라운판"
+    assert page.input_value("#skill-preset") == "report-crown", "기본은 크라운판"
 
 
 def test_edited_skill_downloads_and_builds_without_installs(browser, server, tmp_path):
@@ -548,3 +548,23 @@ def test_level_editor_changes_the_marker_table(browser, server):
     first.fill("@")
     first.dispatch_event("change")
     assert "@" in page.inner_text("#skill-markers")
+
+
+def test_caption_format_reaches_the_skill(browser, server, tmp_path):
+    import json
+    import zipfile
+
+    page, problems = open_page(browser, server, "skill")
+    page.click('summary:has-text("위계")')
+    field = page.locator('[data-path="captions.table"]')
+    field.fill("<표 {장}.{번호}>")
+    field.dispatch_event("change")
+    assert "<표 1.1>" in page.inner_text("#skill-markers")
+    with page.expect_download() as download:
+        page.click("#skill-download")
+    saved = tmp_path / "s.zip"
+    download.value.save_as(str(saved))
+    with zipfile.ZipFile(str(saved)) as zf:
+        (profile_path,) = [n for n in zf.namelist() if n.endswith("profile.json")]
+        assert json.loads(zf.read(profile_path))["captions"]["table"] == "<표 {장}.{번호}>"
+    assert problems == []

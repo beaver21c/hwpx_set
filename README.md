@@ -24,7 +24,7 @@
 만들어 건넨다. 빌더는 **파이썬 표준 라이브러리만** 써서 채팅창의 코드 실행 환경에
 설치할 것이 없다(테스트가 `python -S`, 곧 설치 패키지 없는 파이썬으로 확인한다).
 
-파이썬으로 만들 때: `hwpx-studio skill kihasa-research --id hwpx-crown-report --pack 크라운판.zip`
+파이썬으로 만들 때: `hwpx-studio skill report-crown --id hwpx-crown-report --pack 크라운판.zip`
 (서식 JSON 경로를 주면 그 서식으로).
 
 ## 웹 앱의 다른 갈래
@@ -256,7 +256,7 @@ hwpx-studio export-skill policy-default -o ~/.claude/skills/hwpx-report-studio -
 **그림·캡처뿐인 도식**은 도구가 읽지 못한다. 그 경우 SKILL.md가 에이전트에게
 "직접 그림을 보고 형식대로 받아쓴 뒤 사용자 확인을 받으라"고 지시한다.
 
-집필 규칙까지 얹은 스킬(KIHASA 작업 절차·머릿글 규칙 포함)은 `skills/`에 있다.
+집필 규칙까지 얹은 스킬(작업 절차·머릿글 규칙 포함)은 `skills/`에 있다.
 
 ```bash
 python skills/build.py -o ~/.claude/skills      # 조립 + 설치
@@ -314,7 +314,7 @@ python skills/build.py -o ~/.claude/skills      # 조립 + 설치
 | `policy-default` | Ⅰ./1./□/○/-/·/※ 7레벨 (기존 생성기와 동일 서식) |
 | `gov-3level` | Ⅰ./1./□/○/- 5레벨, 흑백 |
 | `narrative` | 서술식(제목 + 본문 문단, 첫 줄 들여쓰기) |
-| `kihasa-research` | 연구보고서 **크라운판(166×241mm)** — 제N장/제N절/1./가./1), 개조식 □○-·, 표·그림 번호는 장을 따라감. 값은 기관 서식 실측치 |
+| `report-crown` | 연구보고서 **크라운판(166×241mm)** — 제N장/제N절/1./가./1), 개조식 □○-·, 표·그림 번호는 장을 따라감(모양은 `captions`로 바꾼다). 값은 실제 크라운판 서식 실측치 |
 
 프로파일 JSON은 `hwpx_studio/profiles/`에 있다(설치본에 함께 들어간다). 규격: `docs/profile-spec.md`
 

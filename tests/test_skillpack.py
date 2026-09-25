@@ -18,7 +18,7 @@ from hwpx_studio.profile import load_profile
 from hwpx_studio.skillpack import build_skill, pack_skill, sample_text, skill_fields
 
 ROOT = Path(__file__).resolve().parents[1]
-PRESETS = ["kihasa-research", "policy-default", "gov-3level", "narrative"]
+PRESETS = ["report-crown", "policy-default", "gov-3level", "narrative"]
 
 
 def _description(skill_md: str) -> str:
@@ -51,7 +51,7 @@ def test_skill_zip_meets_upload_rules(preset):
 
 
 def test_skill_carries_everything_it_needs():
-    files = build_skill(load_profile("kihasa-research"), "크라운판")
+    files = build_skill(load_profile("report-crown"), "크라운판")
     for need in ("SKILL.md", "README.md", "profile.json", "template.hwpx", "예시.md",
                  "scripts/hwpx_build.py"):
         assert need in files, f"{need}가 빠지면 채팅창에서 못 쓴다"
@@ -76,7 +76,7 @@ def test_unpacked_skill_builds_with_the_standard_library_only(tmp_path, preset):
 
 
 def test_crown_skill_output_is_crown_sized(tmp_path):
-    profile = load_profile("kihasa-research")
+    profile = load_profile("report-crown")
     root = _unpack(tmp_path, pack_skill(build_skill(profile), "crown"))
     subprocess.run([sys.executable, "-S", "scripts/hwpx_build.py", "예시.md", "-o", "r.hwpx"],
                    cwd=root, check=True, capture_output=True, timeout=120)
@@ -94,7 +94,7 @@ def test_cli_skill_command(tmp_path):
 
 
 def test_sample_uses_this_profiles_markers():
-    text = sample_text(load_profile("kihasa-research"))
+    text = sample_text(load_profile("report-crown"))
     assert "표) 연도별 실적" in text and "그림) 추진 체계" in text
     assert "#### 가. 단계의 예시 문장이다." in text
 
@@ -124,7 +124,7 @@ def test_browser_builds_the_same_skill(tmp_path):
     cases = {}
     for preset in PRESETS:
         cases[preset] = {"profile": load_profile(preset), "name": "", "id": ""}
-    cases["named"] = {"profile": load_profile("kihasa-research"),
+    cases["named"] = {"profile": load_profile("report-crown"),
                       "name": "우리 기관 보고서", "id": "our-report"}
     source = tmp_path / "cases.json"
     source.write_text(json.dumps(cases, ensure_ascii=False), encoding="utf-8")

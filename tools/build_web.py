@@ -29,7 +29,7 @@ from hwpx_studio.skillpack import TEMPLATES as SKILL_TEMPLATES  # noqa: E402
 TARGET = ROOT / "docs" / "assets.js"
 ASSET_DIR = ROOT / "hwpx_studio" / "assets"
 PROFILE_DIR = ROOT / "hwpx_studio" / "profiles"
-ORDER = ["policy-default", "kihasa-research", "gov-3level", "narrative"]
+ORDER = ["policy-default", "report-crown", "gov-3level", "narrative"]
 
 HEADER = """/**
  * 자동 생성 파일 — 직접 고치지 말 것.

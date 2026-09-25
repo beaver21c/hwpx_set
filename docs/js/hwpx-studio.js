@@ -66,6 +66,8 @@ export const DEFAULT_PROFILE = {
     min_children: {}, period_policy: 'single_sentence_no_period',
     footnote_position: 'before_period',
   },
+  // 표·그림 번호 모양. {장}은 장 번호, {번호}는 그 장 안의 순번. 장이 없으면 `{장}-`를 뺀다
+  captions: { table: '〈표 {장}-{번호}〉', figure: '〔그림 {장}-{번호}〕' },
 };
 
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -1304,7 +1306,14 @@ function patchHeader(xml, profile, ids, diagramFills, textKeys = []) {
   return x;
 }
 
-function autoPrefix(kind, n, chapter = 0) {
+/** 캡션 번호. 장 번호가 없으면(0) `{장}`과 뒤따르는 구분 기호를 뺀다 */
+export function captionPrefix(format, chapter, n) {
+  let fmt = String(format);
+  if (!chapter) fmt = fmt.replace(/\{장\}[-.·]?/g, '');
+  return `${fmt.split('{장}').join(String(chapter)).split('{번호}').join(String(n + 1))} `;
+}
+
+function autoPrefix(kind, n, chapter = 0, captions = DEFAULT_PROFILE.captions) {
   if (kind === 'AUTO_ROMAN') return n < ROMAN.length ? `${ROMAN[n]}. ` : `${n + 1}. `;
   if (kind === 'AUTO_NUM') return `${n + 1}. `;
   if (kind === 'AUTO_ALPHA') return n < 26 ? `${String.fromCharCode(65 + n)}. ` : `${n + 1}. `;
@@ -1313,8 +1322,8 @@ function autoPrefix(kind, n, chapter = 0) {
   if (kind === 'AUTO_CHAPTER') return `제${n + 1}장 `;   // 연구보고서 장 제목
   if (kind === 'AUTO_SECTION') return `제${n + 1}절 `;   // 연구보고서 절 제목
   if (kind === 'AUTO_PAREN') return `${n + 1}) `;        // 숫자에 닫는 괄호
-  if (kind === 'AUTO_TABLE') return `〈표 ${chapter}-${n + 1}〉 `;   // 장 번호를 따라간다
-  if (kind === 'AUTO_FIGURE') return `〔그림 ${chapter}-${n + 1}〕 `;
+  if (kind === 'AUTO_TABLE') return captionPrefix(captions.table || DEFAULT_PROFILE.captions.table, chapter, n);
+  if (kind === 'AUTO_FIGURE') return captionPrefix(captions.figure || DEFAULT_PROFILE.captions.figure, chapter, n);
   return '';
 }
 
@@ -1329,7 +1338,7 @@ function makeNumbering(profile) {
     const idx = order.indexOf(key);
     const value = counters.get(key) || 0;
     if (chapterKeys.has(key)) chapter = value + 1;
-    const text = autoPrefix(kind, value, chapter);
+    const text = autoPrefix(kind, value, chapter, profile.captions || DEFAULT_PROFILE.captions);
     counters.set(key, value + 1);
     order.slice(idx + 1).forEach((deeper) => counters.set(deeper, 0));
     return text;

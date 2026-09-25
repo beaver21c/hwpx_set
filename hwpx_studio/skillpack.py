@@ -33,7 +33,7 @@ SKILL_BUILDER = "hwpx_build.py"
 
 #: 내장 서식별 스킬 영문 이름(웹 앱 skill-ui.js의 PRESET_IDS와 같다)
 PRESET_IDS = {
-    "kihasa-research": "hwpx-crown-report", "policy-default": "hwpx-policy-report",
+    "report-crown": "hwpx-crown-report", "policy-default": "hwpx-policy-report",
     "gov-3level": "hwpx-gov-report", "narrative": "hwpx-narrative-report",
 }
 
@@ -47,8 +47,6 @@ AUTO_LABELS = {
     "AUTO_CHAPTER": "제1장 제2장",
     "AUTO_SECTION": "제1절 제2절",
     "AUTO_PAREN": "1) 2) 3)",
-    "AUTO_TABLE": "〈표 1-1〉 (표 제목)",
-    "AUTO_FIGURE": "〔그림 1-1〕 (그림 제목)",
 }
 
 PERIOD_RULES = {
@@ -67,8 +65,18 @@ def fmt_num(value: Any) -> str:
     return repr(round(number, 4)).rstrip("0").rstrip(".")
 
 
-def _head(level: Dict[str, Any]) -> str:
+def caption_sample(profile: Dict[str, Any], kind: str) -> str:
+    """캡션 번호가 찍히는 모양(1장 첫 번째). kind = table | figure"""
+    fmt = str((profile.get("captions") or {}).get(kind) or "")
+    return fmt.replace("{장}", "1").replace("{번호}", "1")
+
+
+def _head(level: Dict[str, Any], profile: Dict[str, Any]) -> str:
     prefix = str(level.get("prefix", ""))
+    if prefix in ("AUTO_TABLE", "AUTO_FIGURE"):
+        kind = "table" if prefix == "AUTO_TABLE" else "figure"
+        title = "표 제목" if kind == "table" else "그림 제목"
+        return f"{caption_sample(profile, kind)} ({title}) (도구가 매김)"
     if prefix.startswith("AUTO_"):
         return AUTO_LABELS.get(prefix, prefix) + " (도구가 매김)"
     if prefix.strip():
@@ -81,7 +89,7 @@ def marker_rows(profile: Dict[str, Any]) -> str:
     for lv in profile["levels"]:
         marker = f"`{lv['marker']}`" if lv.get("marker") else "(마커 없이 쓴 줄)"
         size = fmt_num(lv.get("size_pt", 0)) + "pt" + (" 굵게" if lv.get("bold") else "")
-        rows.append(f"| {marker} | {lv.get('name') or lv['key']} | {_head(lv)} | {size} |")
+        rows.append(f"| {marker} | {lv.get('name') or lv['key']} | {_head(lv, profile)} | {size} |")
     if profile.get("mode") == "narrative":
         rows.append(f"| (마커 없이 쓴 줄) | 본문 | 없음 | "
                     f"{fmt_num(profile['body'].get('size_pt', 0))}pt |")
@@ -100,7 +108,8 @@ def caption_lines(profile: Dict[str, Any]) -> str:
     figure = _caption_marker(profile, "AUTO_FIGURE")
     out = []
     if table:
-        out.append(f"- 표 제목: 표 바로 위에 `{table} 제목` 한 줄. 번호(〈표 1-1〉)는 도구가 매긴다")
+        out.append(f"- 표 제목: 표 바로 위에 `{table} 제목` 한 줄. "
+                   f"번호({caption_sample(profile, 'table')})는 도구가 매긴다")
     if figure:
         out.append(f"- 그림·도식 제목: 도식 바로 위에 `{figure} 제목` 한 줄. 번호는 도구가 매긴다")
     if not out:

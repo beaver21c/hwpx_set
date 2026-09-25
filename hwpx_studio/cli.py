@@ -419,7 +419,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_skill = sub.add_parser(
         "skill", help="서식 → Claude·ChatGPT 채팅창에 올리는 스킬 zip(설치 없이 돈다)")
-    p_skill.add_argument("profile", nargs="?", default="kihasa-research",
+    p_skill.add_argument("profile", nargs="?", default="report-crown",
                          help="내장 서식 이름 또는 JSON 경로(기본: 크라운판)")
     p_skill.add_argument("--name", default="", help="스킬 이름(기본: 서식 이름)")
     p_skill.add_argument("--id", default="", dest="skill_id",

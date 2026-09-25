@@ -44,7 +44,8 @@ CASES = [
     ("tests/fixtures/diagram_db.md", "policy-default"),
     ("examples/input_db.md", "policy-default"),
     ("tests/fixtures/footnote.md", "policy-default"),
-    ("examples/input_research.md", "kihasa-research"),
+    ("examples/input_research.md", "report-crown"),
+    ("tests/fixtures/captions.md", "report-crown"),
     ("examples/input_narrative.md", "narrative"),
 ]
 

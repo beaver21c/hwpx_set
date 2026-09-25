@@ -765,7 +765,7 @@ function init() {
   document.querySelectorAll('[data-sample]').forEach((button) => {
     button.addEventListener('click', () => {
       bodyText.value = SAMPLES[button.dataset.sample];
-      const forSample = { narrative: 'narrative', research: 'kihasa-research' };
+      const forSample = { narrative: 'narrative', research: 'report-crown' };
       profileSelect.value = forSample[button.dataset.sample] || 'policy-default';
       renderMarkers();
       updateStat();

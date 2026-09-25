@@ -6,17 +6,17 @@
  */
 
 import { HWPX_PROFILES, HWPX_TEMPLATE_B64 } from '../assets.js';
-import { base64ToBytes, buildFromText, PAPER_SIZES } from './hwpx-studio.js';
+import { base64ToBytes, buildFromText, mergeProfile, PAPER_SIZES } from './hwpx-studio.js';
 import { buildSkill, packSkill, skillMarkerRows, skillSampleText } from './skillpack.js';
 
 const STATE_KEY = 'hwpx-studio.skill.v1';
 const PAPER_CHOICES = ['A4', 'B5', 'A5', 'A3', 'B4', 'Letter', '크라운판', '신국판', '국판', '4x6배판'];
 /** 시작 서식별 스킬 영문 이름(claude.ai·ChatGPT 목록에 보이는 이름) */
 const PRESET_IDS = {
-  'kihasa-research': 'hwpx-crown-report', 'policy-default': 'hwpx-policy-report',
+  'report-crown': 'hwpx-crown-report', 'policy-default': 'hwpx-policy-report',
   'gov-3level': 'hwpx-gov-report', narrative: 'hwpx-narrative-report',
 };
-const DEFAULT_PRESET = 'kihasa-research';
+const DEFAULT_PRESET = 'report-crown';
 
 const $ = (id) => document.getElementById(id);
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -119,6 +119,7 @@ const FALLBACK = {
   'diagram.font_size_pt': 11, 'diagram.max_width_mm': 160,
   'footnote.size_pt': 8, 'footnote.color': '#808080',
   'rules.period_policy': 'single_sentence_no_period',
+  'captions.table': '〈표 {장}-{번호}〉', 'captions.figure': '〔그림 {장}-{번호}〕',
   'body.size_pt': 12, 'body.line_spacing': 160, 'body.first_line_indent_pt': 0, 'body.letter_spacing': 0,
   mode: 'outline',
 };
@@ -276,12 +277,9 @@ function renderMarkers() {
     + `<tbody>${body.map((r) => `<tr>${cells(r).map((c) => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
-/** markerRows는 병합된 서식을 기대한다(비어 있는 칸의 기본값) */
+/** 마커 표는 병합된 서식을 기대한다(비어 있는 칸의 기본값) */
 function mergeForTable() {
-  const merged = clone(profile);
-  merged.levels = merged.levels.map((lv) => ({ ...lv, marker: lv.marker || '' }));
-  merged.body = merged.body || { size_pt: 12 };
-  return merged;
+  return mergeProfile(profile);
 }
 
 function say(text, kind = '') {

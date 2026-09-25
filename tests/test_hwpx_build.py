@@ -19,7 +19,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "hwpx_studio" / "assets" / "hwpx_build.py"
-PROFILES = sorted((ROOT / "hwpx_studio" / "profiles").glob("*.json"))
+PROFILES = (sorted((ROOT / "hwpx_studio" / "profiles").glob("*.json"))
+            + sorted((ROOT / "tests" / "fixtures" / "profiles").glob("*.json")))
 INPUTS = sorted((ROOT / "examples").glob("*.md")) + sorted((ROOT / "tests" / "fixtures").glob("*.md"))
 
 #: 여러 사례를 node 한 번에 돌린다. 입력: {template, cases:[{profile,input,out}]}
@@ -134,7 +135,7 @@ def test_cli_end_to_end(tmp_path):
     out = tmp_path / "결과.hwpx"
     proc = subprocess.run(
         [sys.executable, str(MODULE), str(ROOT / "examples" / "input_research.md"),
-         "-o", str(out), "--profile", str(ROOT / "hwpx_studio" / "profiles" / "kihasa-research.json"),
+         "-o", str(out), "--profile", str(ROOT / "hwpx_studio" / "profiles" / "report-crown.json"),
          "--template", str(tpl)],
         capture_output=True, text=True, encoding="utf-8")
     assert proc.returncode == 0, proc.stderr

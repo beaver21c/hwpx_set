@@ -121,6 +121,8 @@ DEFAULT_PROFILE: Dict[str, Any] = {
         "max_width_mm": 160,
         "image_backend": "matplotlib",
     },
+    # 표·그림 번호 모양. {장}은 장 번호, {번호}는 그 장 안의 순번. 장이 없으면 `{장}-`를 뺀다
+    "captions": {"table": "〈표 {장}-{번호}〉", "figure": "〔그림 {장}-{번호}〕"},
     "rules": {
         "min_children": {},
         # 레벨 key → 본문 앞머리에 있어야 할 정규식(예: 네모의 【분류】). 없으면 검사 안 함

@@ -373,7 +373,20 @@ def _update_para_pr_line_spacing(xml: str, para_id: int, ls_val: int) -> str:
 # ──────────────────────────────────────────────────────────────
 # 자동 번호 접두어
 # ──────────────────────────────────────────────────────────────
-def _auto_prefix(kind: str, n: int, chapter: int = 0) -> str:
+_CAPTION_DEFAULTS = {"table": "〈표 {장}-{번호}〉", "figure": "〔그림 {장}-{번호}〕"}
+
+
+def caption_prefix(fmt: str, chapter: int, n: int) -> str:
+    """캡션 번호. 장 번호가 없으면(0) `{장}`과 뒤따르는 구분 기호를 뺀다."""
+    fmt = str(fmt)
+    if not chapter:
+        fmt = re.sub(r"\{장\}[-.·]?", "", fmt)
+    return fmt.replace("{장}", str(chapter)).replace("{번호}", str(n + 1)) + " "
+
+
+def _auto_prefix(kind: str, n: int, chapter: int = 0,
+                 captions: Optional[Dict[str, str]] = None) -> str:
+    captions = captions or _CAPTION_DEFAULTS
     if kind == "AUTO_ROMAN":
         return f"{ROMAN[n]}. " if n < len(ROMAN) else f"{n + 1}. "
     if kind == "AUTO_NUM":
@@ -391,9 +404,9 @@ def _auto_prefix(kind: str, n: int, chapter: int = 0) -> str:
     if kind == "AUTO_PAREN":            # 1) — 숫자에 닫는 괄호
         return f"{n + 1}) "
     if kind == "AUTO_TABLE":            # 〈표 1-1〉 — 장 번호를 따라간다
-        return f"〈표 {chapter}-{n + 1}〉 "
+        return caption_prefix(captions.get("table") or _CAPTION_DEFAULTS["table"], chapter, n)
     if kind == "AUTO_FIGURE":           # 〔그림 1-1〕
-        return f"〔그림 {chapter}-{n + 1}〕 "
+        return caption_prefix(captions.get("figure") or _CAPTION_DEFAULTS["figure"], chapter, n)
     return ""
 
 
@@ -407,13 +420,14 @@ class _Numbering:
         self.chapter_keys = {lv["key"] for lv in profile["levels"]
                              if lv.get("prefix") == "AUTO_CHAPTER"}
         self.chapter = 0
+        self.captions = profile.get("captions") or _CAPTION_DEFAULTS
 
     def next_prefix(self, key: str, kind: str) -> str:
         idx = self.order.index(key) if key in self.order else len(self.order)
         value = self.counters.get(key, 0)
         if key in self.chapter_keys:
             self.chapter = value + 1
-        text = _auto_prefix(kind, value, self.chapter)
+        text = _auto_prefix(kind, value, self.chapter, self.captions)
         self.counters[key] = value + 1
         for deeper in self.order[idx + 1:]:
             self.counters[deeper] = 0

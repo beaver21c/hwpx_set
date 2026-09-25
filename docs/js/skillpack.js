@@ -21,8 +21,6 @@ export const AUTO_LABELS = {
   AUTO_CHAPTER: '제1장 제2장',
   AUTO_SECTION: '제1절 제2절',
   AUTO_PAREN: '1) 2) 3)',
-  AUTO_TABLE: '〈표 1-1〉 (표 제목)',
-  AUTO_FIGURE: '〔그림 1-1〕 (그림 제목)',
 };
 
 export const PERIOD_RULES = {
@@ -35,8 +33,19 @@ export const PERIOD_RULES = {
 /** 숫자를 사람이 읽을 모양으로(파이썬 fmt_num과 같게). */
 export const fmtNum = (value) => String(Math.round(Number(value) * 1e4) / 1e4);
 
-function head(level) {
+/** 캡션 번호가 찍히는 모양(1장 첫 번째). kind = table | figure */
+export function captionSample(profile, kind) {
+  const fmt = String((profile.captions || {})[kind] || '');
+  return fmt.split('{장}').join('1').split('{번호}').join('1');
+}
+
+function head(level, profile) {
   const prefix = String(level.prefix || '');
+  if (prefix === 'AUTO_TABLE' || prefix === 'AUTO_FIGURE') {
+    const kind = prefix === 'AUTO_TABLE' ? 'table' : 'figure';
+    const title = kind === 'table' ? '표 제목' : '그림 제목';
+    return `${captionSample(profile, kind)} (${title}) (도구가 매김)`;
+  }
   if (prefix.startsWith('AUTO_')) return `${AUTO_LABELS[prefix] || prefix} (도구가 매김)`;
   if (prefix.trim()) return `\`${prefix.trim()}\` (도구가 붙임)`;
   return '없음';
@@ -47,7 +56,7 @@ export function skillMarkerRows(profile) {
   for (const lv of profile.levels) {
     const marker = lv.marker ? `\`${lv.marker}\`` : '(마커 없이 쓴 줄)';
     const size = `${fmtNum(lv.size_pt || 0)}pt${lv.bold ? ' 굵게' : ''}`;
-    rows.push(`| ${marker} | ${lv.name || lv.key} | ${head(lv)} | ${size} |`);
+    rows.push(`| ${marker} | ${lv.name || lv.key} | ${head(lv, profile)} | ${size} |`);
   }
   if (profile.mode === 'narrative') {
     rows.push(`| (마커 없이 쓴 줄) | 본문 | 없음 | ${fmtNum(profile.body.size_pt || 0)}pt |`);
@@ -64,7 +73,7 @@ export function captionLines(profile) {
   const table = captionMarker(profile, 'AUTO_TABLE');
   const figure = captionMarker(profile, 'AUTO_FIGURE');
   const out = [];
-  if (table) out.push(`- 표 제목: 표 바로 위에 \`${table} 제목\` 한 줄. 번호(〈표 1-1〉)는 도구가 매긴다`);
+  if (table) out.push(`- 표 제목: 표 바로 위에 \`${table} 제목\` 한 줄. 번호(${captionSample(profile, 'table')})는 도구가 매긴다`);
   if (figure) out.push(`- 그림·도식 제목: 도식 바로 위에 \`${figure} 제목\` 한 줄. 번호는 도구가 매긴다`);
   if (!out.length) out.push('- 이 서식에는 표·그림 번호 단계가 없다. 도식 제목은 블록의 `title="…"`로 준다');
   return out.join('\n');

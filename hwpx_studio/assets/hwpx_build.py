@@ -475,6 +475,8 @@ DEFAULT_PROFILE = {
         'min_children': {}, 'period_policy': 'single_sentence_no_period',
         'footnote_position': 'before_period',
     },
+    # 표·그림 번호 모양. {장}은 장 번호, {번호}는 그 장 안의 순번. 장이 없으면 `{장}-`를 뺀다
+    'captions': {'table': '〈표 {장}-{번호}〉', 'figure': '〔그림 {장}-{번호}〕'},
 }
 
 
@@ -1824,7 +1826,16 @@ def patch_header(xml, profile, ids, diagram_fills, text_keys=()):
     return x
 
 
-def auto_prefix(kind, n, chapter=0):
+def caption_prefix(fmt, chapter, n):
+    """캡션 번호. 장 번호가 없으면(0) `{장}`과 뒤따르는 구분 기호를 뺀다."""
+    fmt = js_str(fmt)
+    if not chapter:
+        fmt = re.sub(r'\{장\}[-.·]?', '', fmt)
+    return fmt.replace('{장}', js_str(chapter)).replace('{번호}', js_str(n + 1)) + ' '
+
+
+def auto_prefix(kind, n, chapter=0, captions=None):
+    captions = captions if isinstance(captions, dict) else DEFAULT_PROFILE['captions']
     if kind == 'AUTO_ROMAN':
         return f'{ROMAN[n]}. ' if n < len(ROMAN) else f'{n + 1}. '
     if kind == 'AUTO_NUM':
@@ -1841,10 +1852,10 @@ def auto_prefix(kind, n, chapter=0):
         return f'제{n + 1}절 '       # 연구보고서 절 제목
     if kind == 'AUTO_PAREN':
         return f'{n + 1}) '          # 숫자에 닫는 괄호
-    if kind == 'AUTO_TABLE':
-        return f'〈표 {chapter}-{n + 1}〉 '    # 장 번호를 따라간다
+    if kind == 'AUTO_TABLE':                  # 장 번호를 따라간다
+        return caption_prefix(captions.get('table') or DEFAULT_PROFILE['captions']['table'], chapter, n)
     if kind == 'AUTO_FIGURE':
-        return f'〔그림 {chapter}-{n + 1}〕 '
+        return caption_prefix(captions.get('figure') or DEFAULT_PROFILE['captions']['figure'], chapter, n)
     return ''
 
 
@@ -1860,7 +1871,7 @@ def make_numbering(profile):
         value = _or(counters.get(key), 0)
         if key in chapter_keys:
             state['chapter'] = value + 1
-        text = auto_prefix(kind, value, state['chapter'])
+        text = auto_prefix(kind, value, state['chapter'], profile.get('captions'))
         counters[key] = value + 1
         for deeper in order[idx + 1:]:
             counters[deeper] = 0

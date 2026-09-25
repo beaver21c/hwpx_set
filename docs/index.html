@@ -135,6 +135,27 @@
         <div class="actions">
           <button type="button" id="skill-level-add" class="ghost">+ 단계 추가</button>
         </div>
+        <div class="fields">
+          <label>표 번호 모양
+            <input type="text" list="skill-caption-table" data-path="captions.table" spellcheck="false">
+          </label>
+          <label>그림 번호 모양
+            <input type="text" list="skill-caption-figure" data-path="captions.figure" spellcheck="false">
+          </label>
+        </div>
+        <datalist id="skill-caption-table">
+          <option value="〈표 {장}-{번호}〉"><option value="<표 {장}-{번호}>"><option value="[표 {장}-{번호}]">
+          <option value="표 {장}-{번호}."><option value="〈표 {장}.{번호}〉"><option value="〈표 {번호}〉">
+          <option value="<표 {번호}>"><option value="표 {번호}.">
+        </datalist>
+        <datalist id="skill-caption-figure">
+          <option value="〔그림 {장}-{번호}〕"><option value="[그림 {장}-{번호}]"><option value="<그림 {장}-{번호}>">
+          <option value="그림 {장}-{번호}."><option value="〔그림 {번호}〕"><option value="[그림 {번호}]">
+          <option value="그림 {번호}.">
+        </datalist>
+        <p class="hint"><code>{장}</code>은 장 번호, <code>{번호}</code>는 그 장 안의 순번입니다.
+          장 단계(머리 '제1장')가 없거나 장보다 앞이면 <code>{장}-</code>는 빠집니다(〈표 1〉).
+          캡션은 위 표에서 머리를 표·그림 캡션으로 고른 단계가 있어야 찍힙니다.</p>
       </details>
 
       <details>

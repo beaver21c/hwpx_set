@@ -46,7 +46,7 @@ jobs:
       - name: 기본 스킬(크라운판) zip 만들기
         run: |
           mkdir -p docs/skills
-          hwpx-studio skill kihasa-research --name "연구보고서 크라운판" \
+          hwpx-studio skill report-crown --name "연구보고서 크라운판" \
             --id hwpx-crown-report --pack docs/skills/hwpx-crown-report.zip
       - id: pages
         uses: actions/configure-pages@v5
