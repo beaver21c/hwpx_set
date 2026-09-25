@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>hwpx-studio — 한글 문서를 만드는 네 가지 길</title>
+<title>hwpx-studio — 한글 문서 스킬과 도구</title>
 <meta name="description" content="설치 없이 브라우저에서. 쓰던 한글 양식을 올리면 그 양식 전용 도구 꾸러미가 나오고, 마커 텍스트·도식을 한글 문서(.hwpx)로 바꿉니다. 파일은 기기 밖으로 나가지 않습니다.">
 <link rel="stylesheet" href="./css/style.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📄</text></svg>">
@@ -18,7 +18,13 @@
 </header>
 
 <nav class="wrap lanes" aria-label="서비스 선택">
-  <button type="button" class="lane" data-lane="form" aria-pressed="true">
+  <button type="button" class="lane" data-lane="skill" aria-pressed="true">
+    <span class="lane-no">★</span>
+    <span class="lane-name">스킬 만들기</span>
+    <span class="lane-why">Claude·ChatGPT 채팅창에서 불러 쓰는 한글 문서 스킬.
+      기본은 크라운판, 고치고 싶은 것만 골라 바꿉니다</span>
+  </button>
+  <button type="button" class="lane" data-lane="form" aria-pressed="false">
     <span class="lane-no">1</span>
     <span class="lane-name">양식으로 도구 만들기</span>
     <span class="lane-why">쓰던 한글 양식을 올리면 그 양식 전용 꾸러미가 나옵니다.
@@ -44,8 +50,166 @@
 
 <main class="wrap">
 
+  <!-- ★ 스킬 만들기 ---------------------------------------------------->
+  <div data-panel="skill">
+    <section class="panel">
+      <h2>스킬 만들기 — Claude·ChatGPT 채팅창에서 불러 쓰기</h2>
+      <p class="hint">스킬을 한 번 올려 두면 채팅창에서 "○○ 보고서를 한글 파일로 만들어 줘"라고만 하면
+        AI가 본문을 쓰고 <strong>그 자리에서 .hwpx</strong>를 만들어 줍니다. 표·도식·각주까지 들어갑니다.
+        스킬 안의 빌더는 파이썬 표준 라이브러리만 써서 <strong>설치할 것이 없습니다.</strong></p>
+      <div class="fields">
+        <label>시작 서식
+          <select id="skill-preset"></select>
+        </label>
+        <label>스킬 이름
+          <input id="skill-name" type="text" spellcheck="false">
+        </label>
+        <label>영문 이름 <span class="tiny">소문자·숫자·하이픈</span>
+          <input id="skill-id" type="text" spellcheck="false" placeholder="hwpx-crown-report">
+        </label>
+      </div>
+      <div class="actions">
+        <button type="button" id="skill-download" class="primary">스킬 받기(.zip)</button>
+        <button type="button" id="skill-sample">이 서식으로 예시 문서 받기(.hwpx)</button>
+        <button type="button" id="skill-reset" class="ghost">시작 서식으로 되돌리기</button>
+      </div>
+      <p class="status" id="skill-status" role="status"></p>
+      <p class="hint"><strong>올리는 곳</strong> — zip을 <strong>풀지 말고 그대로</strong>.
+        Claude: <em>Settings → Capabilities</em>에서 코드 실행을 켠 뒤 <em>Customize → Skills → + → Upload a skill</em>.
+        ChatGPT: <em>Skills → Create → Upload from your computer</em>.
+        <a href="https://github.com/beaver21c/hwpx_set#스킬로-쓰기">자세히</a></p>
+    </section>
+
+    <section class="panel">
+      <h2>서식 고치기 <span class="tiny">고친 값은 이 브라우저에 저장됩니다</span></h2>
+      <p class="hint">바꾸고 싶은 항목만 여세요. 나머지는 시작 서식 그대로 갑니다.
+        고친 뒤 <strong>예시 문서 받기</strong>로 한글에서 모양을 확인하고 스킬을 받으세요.</p>
+
+      <details open>
+        <summary>문체·용지</summary>
+        <div class="fields">
+          <label>문체
+            <select data-path="mode">
+              <option value="outline">개조식 — 줄머리 기호로 단계</option>
+              <option value="narrative">서술식 — 제목 + 본문 문단</option>
+            </select>
+          </label>
+          <label>용지
+            <select id="skill-paper"></select>
+          </label>
+          <label>폭(mm)<input type="number" step="0.1" data-path="page.width_mm"></label>
+          <label>높이(mm)<input type="number" step="0.1" data-path="page.height_mm"></label>
+        </div>
+        <div class="fields">
+          <label>왼쪽 여백<input type="number" step="0.5" data-path="page.margin_mm.left"></label>
+          <label>오른쪽<input type="number" step="0.5" data-path="page.margin_mm.right"></label>
+          <label>위<input type="number" step="0.5" data-path="page.margin_mm.top"></label>
+          <label>아래<input type="number" step="0.5" data-path="page.margin_mm.bottom"></label>
+          <label>머리말<input type="number" step="0.5" data-path="page.margin_mm.header"></label>
+          <label>꼬리말<input type="number" step="0.5" data-path="page.margin_mm.footer"></label>
+        </div>
+      </details>
+
+      <details>
+        <summary>글꼴</summary>
+        <div class="fields">
+          <label>제목·강조 글꼴<input type="text" list="skill-fonts" data-path="fonts.bold" spellcheck="false"></label>
+          <label>본문 글꼴<input type="text" list="skill-fonts" data-path="fonts.light" spellcheck="false"></label>
+        </div>
+        <datalist id="skill-fonts">
+          <option value="KoPub돋움체 Bold"><option value="KoPub돋움체 Medium"><option value="KoPub돋움체 Light">
+          <option value="KoPub바탕체 Bold"><option value="KoPub바탕체 Light">
+          <option value="맑은 고딕"><option value="함초롬돋움"><option value="함초롬바탕">
+          <option value="나눔고딕"><option value="나눔명조"><option value="HY헤드라인M"><option value="휴먼명조">
+        </datalist>
+        <p class="hint">글꼴은 이름만 문서에 들어갑니다. 그 글꼴이 없는 PC에서는 다른 글꼴로 보입니다.</p>
+      </details>
+
+      <details>
+        <summary>위계(단계)·캡션</summary>
+        <p class="hint">위에서 아래 순서가 곧 깊이입니다. <strong>입력 마커</strong>는 원고에 쓰는 기호,
+          <strong>머리</strong>는 문서에 찍히는 기호·번호입니다. 표·그림 캡션도 여기서
+          머리를 <code>〈표 1-1〉</code>·<code>〔그림 1-1〕</code>로 고른 단계입니다.
+          마커를 비운 단계가 있으면 마커 없이 쓴 줄이 그 단계(본문)가 됩니다.</p>
+        <div class="gridwrap"><table class="cheat levels" id="skill-levels"></table></div>
+        <div class="actions">
+          <button type="button" id="skill-level-add" class="ghost">+ 단계 추가</button>
+        </div>
+      </details>
+
+      <details>
+        <summary>본문 문단</summary>
+        <div class="fields">
+          <label>크기(pt)<input type="number" step="0.5" data-path="body.size_pt"></label>
+          <label>줄 간격(%)<input type="number" step="1" data-path="body.line_spacing"></label>
+          <label>첫 줄 들여쓰기(pt)<input type="number" step="0.5" data-path="body.first_line_indent_pt"></label>
+          <label>자간<input type="number" step="1" data-path="body.letter_spacing"></label>
+        </div>
+      </details>
+
+      <details>
+        <summary>표</summary>
+        <div class="fields">
+          <label>테두리 색<input type="color" data-path="table.border_color"></label>
+          <label>머리행 배경<input type="color" data-path="table.header_bg"></label>
+          <label>머리행 글자색<input type="color" data-path="table.top.color"></label>
+          <label>머리행 굵게<select data-path="table.top.bold" data-type="bool"><option value="true">예</option><option value="false">아니오</option></select></label>
+          <label>셀 글자 크기(pt)<input type="number" step="0.5" data-path="table.mid.size_pt"></label>
+          <label>머리행 글자 크기(pt)<input type="number" step="0.5" data-path="table.top.size_pt"></label>
+          <label>표 폭(mm, 0=자동)<input type="number" step="0.5" data-path="table.width_mm"></label>
+        </div>
+      </details>
+
+      <details>
+        <summary>도식</summary>
+        <div class="fields">
+          <label>상자 채움<input type="color" data-path="diagram.box_fill"></label>
+          <label>상자 테두리<input type="color" data-path="diagram.box_border"></label>
+          <label>상자 글자<input type="color" data-path="diagram.box_color"></label>
+          <label>맨 위 상자 채움<input type="color" data-path="diagram.root_fill"></label>
+          <label>맨 위 상자 글자<input type="color" data-path="diagram.root_color"></label>
+          <label>연결선<input type="color" data-path="diagram.line_color"></label>
+          <label>글자 크기(pt)<input type="number" step="0.5" data-path="diagram.font_size_pt"></label>
+          <label>최대 폭(mm)<input type="number" step="1" data-path="diagram.max_width_mm"></label>
+        </div>
+        <p class="hint">상자마다 다른 색은 원고에서 <code>{fill=#C00000 color=#FFFFFF}</code>로 줍니다.</p>
+      </details>
+
+      <details>
+        <summary>각주·검사 규칙</summary>
+        <div class="fields">
+          <label>각주 크기(pt)<input type="number" step="0.5" data-path="footnote.size_pt"></label>
+          <label>각주 색<input type="color" data-path="footnote.color"></label>
+          <label>온점 규칙
+            <select data-path="rules.period_policy">
+              <option value="single_sentence_no_period">한 문장이면 온점 없음(개조식 관행)</option>
+              <option value="always_period">모든 문장에 온점</option>
+              <option value="never_period">온점 쓰지 않음</option>
+              <option value="off">검사 안 함</option>
+            </select>
+          </label>
+        </div>
+      </details>
+
+      <details>
+        <summary>고급 — 서식 JSON 직접 고치기</summary>
+        <textarea id="skill-json" spellcheck="false"></textarea>
+        <div class="actions">
+          <button type="button" id="skill-json-apply" class="ghost">JSON 적용</button>
+        </div>
+        <p class="hint">규격: <a href="https://github.com/beaver21c/hwpx_set/blob/main/docs/profile-spec.md">profile-spec.md</a></p>
+      </details>
+    </section>
+
+    <section class="panel">
+      <h2>스킬에 들어갈 마커 표</h2>
+      <p class="hint">채팅 AI가 이 표대로 원고를 씁니다.</p>
+      <div id="skill-markers" class="report"></div>
+    </section>
+  </div>
+
   <!-- ① 양식으로 도구 만들기 ------------------------------------------->
-  <div data-panel="form">
+  <div data-panel="form" hidden>
     <section class="panel">
       <h2>① 쓰던 한글 양식을 올리세요</h2>
       <p class="hint">보고서틀·기안문·계획서 등 <strong>서식이 갖춰진 .hwpx</strong>를 올리면,

@@ -7,6 +7,7 @@ import { captureText, specToText } from './capture.js';
 import { buildBundle, packBundle, readContents, slug } from './bundle.js';
 import { analyzeParts } from './formkit.js';
 import { readBack } from './readback.js';
+import { initSkillLane } from './skill-ui.js';
 
 const STORAGE_KEY = 'hwpx-studio.draft.v1';
 
@@ -757,9 +758,10 @@ function init() {
   document.querySelectorAll('[data-lane]').forEach((button) => {
     button.addEventListener('click', () => showLane(button.dataset.lane));
   });
-  let lane = 'form';
-  try { lane = localStorage.getItem(LANE_KEY) || 'form'; } catch { /* 무시 */ }
-  showLane(document.querySelector(`[data-panel="${lane}"]`) ? lane : 'form');
+  initSkillLane();
+  let lane = 'skill';
+  try { lane = localStorage.getItem(LANE_KEY) || 'skill'; } catch { /* 무시 */ }
+  showLane(document.querySelector(`[data-panel="${lane}"]`) ? lane : 'skill');
   document.querySelectorAll('[data-sample]').forEach((button) => {
     button.addEventListener('click', () => {
       bodyText.value = SAMPLES[button.dataset.sample];

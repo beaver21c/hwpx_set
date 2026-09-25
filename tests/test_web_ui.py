@@ -493,3 +493,58 @@ def test_bullet_source_can_be_chosen_in_the_page(browser, server, tmp_path):
     page.wait_for_timeout(600)
     assert "두 번 찍힌다" not in page.inner_text("#form-report")
     assert problems == []
+
+
+# ──────────────────────────────────────────────────────────────
+# ★ 스킬 만들기
+# ──────────────────────────────────────────────────────────────
+def test_skill_lane_is_the_front_door(browser, server):
+    page = browser.new_page(viewport={"width": 420, "height": 900})
+    page.goto(server, wait_until="networkidle")
+    assert page.is_visible('[data-panel="skill"]'), "처음 열면 스킬 만들기가 보여야 한다"
+    assert page.input_value("#skill-preset") == "kihasa-research", "기본은 크라운판"
+
+
+def test_edited_skill_downloads_and_builds_without_installs(browser, server, tmp_path):
+    """서식을 고쳐 받은 스킬을 풀어, 설치 없는 파이썬으로 예시를 만든다. 고친 값이 들어가야 한다."""
+    import json
+    import re
+    import subprocess
+    import sys
+    import zipfile
+
+    page, problems = open_page(browser, server, "skill")
+    page.click('summary:has-text("각주")')
+    page.select_option('[data-path="rules.period_policy"]', "never_period")
+    page.select_option("#skill-paper", "A4")          # 문체·용지는 처음부터 열려 있다
+    page.fill("#skill-id", "my-a4-report")
+    with page.expect_download() as download:
+        page.click("#skill-download")
+    saved = tmp_path / "skill.zip"
+    download.value.save_as(str(saved))
+    assert problems == []
+
+    with zipfile.ZipFile(str(saved)) as zf:
+        zf.extractall(str(tmp_path / "x"))
+    root = tmp_path / "x" / "my-a4-report"
+    profile = json.loads((root / "profile.json").read_text(encoding="utf-8"))
+    assert profile["rules"]["period_policy"] == "never_period"
+    assert profile["page"]["width_mm"] == 210
+    assert re.search(r"^name: my-a4-report$", (root / "SKILL.md").read_text(encoding="utf-8"), re.M)
+
+    done = subprocess.run(
+        [sys.executable, "-S", "scripts/hwpx_build.py", "예시.md", "-o", "r.hwpx"],
+        cwd=root, capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stdout + done.stderr
+    with zipfile.ZipFile(str(root / "r.hwpx")) as zf:
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+    assert 'width="59529"' in section, "A4(210mm)로 바꾼 용지가 문서에 들어가야 한다"
+
+
+def test_level_editor_changes_the_marker_table(browser, server):
+    page, _ = open_page(browser, server, "skill")
+    page.click('summary:has-text("위계")')
+    first = page.locator('#skill-levels input[data-key="marker"]').first
+    first.fill("@")
+    first.dispatch_event("change")
+    assert "@" in page.inner_text("#skill-markers")

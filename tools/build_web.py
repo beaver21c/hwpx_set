@@ -23,6 +23,8 @@ sys.path.insert(0, str(ROOT))
 from hwpx.templates import blank_document_bytes  # noqa: E402
 
 from hwpx_studio.export_form import BUILDER, READER, TEMPLATES  # noqa: E402
+from hwpx_studio.skillpack import SKILL_BUILDER  # noqa: E402
+from hwpx_studio.skillpack import TEMPLATES as SKILL_TEMPLATES  # noqa: E402
 
 TARGET = ROOT / "docs" / "assets.js"
 ASSET_DIR = ROOT / "hwpx_studio" / "assets"
@@ -38,6 +40,8 @@ HEADER = """/**
  *  - HWPX_PROFILES:     hwpx_studio/profiles/*.json 사본
  *  - FORM_SCRIPTS:      양식 꾸러미에 넣을 파이썬 도구(빌더·되돌리기)
  *  - FORM_TEMPLATES:    꾸러미 안내문 틀(README·SKILL·AGENTS)
+ *  - SKILL_TEMPLATES:   서식 스킬 안내문 틀(SKILL·README)
+ *  - SKILL_BUILDER_SOURCE: 서식 스킬에 넣을 표준 라이브러리 빌더(hwpx_build.py)
  */
 """
 
@@ -61,12 +65,19 @@ def build() -> str:
                  + json.dumps(scripts, ensure_ascii=False, indent=2) + ";\n")
     lines.append("export const FORM_TEMPLATES = "
                  + json.dumps(TEMPLATES, ensure_ascii=False, indent=2) + ";\n")
+    lines.append("export const SKILL_TEMPLATES = "
+                 + json.dumps(SKILL_TEMPLATES, ensure_ascii=False, indent=2) + ";\n")
+    builder = ASSET_DIR / SKILL_BUILDER
+    lines.append("export const SKILL_BUILDER_SOURCE = "
+                 + json.dumps(builder.read_text(encoding="utf-8") if builder.exists() else "",
+                              ensure_ascii=False) + ";\n")
     lines.append("""
 if (typeof window !== 'undefined') {
   window.HWPX_TEMPLATE_B64 = HWPX_TEMPLATE_B64;
   window.HWPX_PROFILES = HWPX_PROFILES;
   window.FORM_SCRIPTS = FORM_SCRIPTS;
   window.FORM_TEMPLATES = FORM_TEMPLATES;
+  window.SKILL_TEMPLATES = SKILL_TEMPLATES;
 }
 """)
     return "\n".join(lines)

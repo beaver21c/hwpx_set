@@ -23,7 +23,7 @@ hwpx-studio = "hwpx_studio.cli:main"
 packages = ["hwpx_studio"]
 
 [tool.setuptools.package-data]
-hwpx_studio = ["profiles/*.json"]
+hwpx_studio = ["profiles/*.json", "assets/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -278,6 +278,32 @@ def run_formkit(source: str, out: Optional[str], name: str,
     return 0
 
 
+def run_skill(profile_arg: str, name: str, pack: Optional[str],
+              out: Optional[str], skill_id: str = "") -> int:
+    """서식 → 채팅창용 스킬(표준 라이브러리 빌더 동봉)."""
+    from .export_form import write_bundle
+    from .skillpack import PRESET_IDS, build_skill, pack_skill, skill_fields
+
+    if not out and not pack:
+        _echo("만들 곳을 지정할 것: --pack 스킬.zip 또는 -o 폴더")
+        return 2
+    profile = load_profile(profile_arg)
+    skill_id = skill_id or PRESET_IDS.get(profile_arg, "")
+    fields = skill_fields(profile, name, skill_id)
+    files = build_skill(profile, name, skill_id=skill_id)
+    if out:
+        target = Path(out)
+        for path in files:
+            (target / path).parent.mkdir(parents=True, exist_ok=True)
+        write_bundle(files, target)
+        _echo(f"스킬 저장 → {target} ({len(files)}개 파일)")
+    if pack:
+        data = pack_skill(files, fields["slug"])
+        Path(pack).write_bytes(data)
+        _echo(f"스킬 zip 저장 → {pack} ({len(data):,}바이트, 스킬 이름 {fields['slug']})")
+    return 0
+
+
 def run_readback(source: str, out: Optional[str], form: Optional[str],
                  report: Optional[str]) -> int:
     """서식 없는 hwpx를 마커 텍스트로 되돌린다(꾸러미의 read_hwpx.py와 같은 코드)."""
@@ -391,7 +417,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_read.add_argument("--form", help="대상 양식의 form.json(마커를 맞춰 준다)")
     p_read.add_argument("--report", help="추정 근거를 저장할 경로")
 
-    p_exp = sub.add_parser("export-skill", help="프로파일 → 스킬 폴더")
+    p_skill = sub.add_parser(
+        "skill", help="서식 → Claude·ChatGPT 채팅창에 올리는 스킬 zip(설치 없이 돈다)")
+    p_skill.add_argument("profile", nargs="?", default="kihasa-research",
+                         help="내장 서식 이름 또는 JSON 경로(기본: 크라운판)")
+    p_skill.add_argument("--name", default="", help="스킬 이름(기본: 서식 이름)")
+    p_skill.add_argument("--id", default="", dest="skill_id",
+                         help="스킬 영문 이름(소문자·숫자·하이픈). 기본: 이름에서 만든다")
+    p_skill.add_argument("--pack", metavar="PATH", help="zip으로 저장")
+    p_skill.add_argument("-o", "--out", help="폴더로 풀어 저장")
+
+    p_exp = sub.add_parser("export-skill", help="프로파일 → 스킬 폴더(Claude Code용, python-hwpx 필요)")
     p_exp.add_argument("profile")
     p_exp.add_argument("-o", "--out", default="./my-skill")
     p_exp.add_argument("--slug", default="hwpx-report")
@@ -427,6 +463,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                args.report_only, args.bullets)
         if cmd == "readback":
             return run_readback(args.source, args.out, args.form, args.report)
+        if cmd == "skill":
+            return run_skill(args.profile, args.name, args.pack, args.out, args.skill_id)
         if cmd == "export-skill":
             return run_export_skill(args.profile, args.out, args.slug, args.standalone)
     except FileNotFoundError as exc:

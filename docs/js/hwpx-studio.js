@@ -118,6 +118,8 @@ export function parseText(text, profile) {
     .map((lv) => [lv.marker, lv.key])
     .sort((a, b) => b[0].length - a[0].length);
   const fallback = bodyLevels(profile).map((lv) => lv.key);
+  // 마커가 없는 레벨 — 마커 없는 줄이 갈 제자리(예: 크라운판의 바탕글)
+  const plainHome = (bodyLevels(profile).find((lv) => !lv.marker) || {}).key || null;
   const narrative = profile.mode === 'narrative';
 
   const items = [];
@@ -206,6 +208,8 @@ export function parseText(text, profile) {
 
     if (narrative || !fallback.length) {
       push({ type: 'para', key: 'body', text: stripped }, lineno);
+    } else if (plainHome) {
+      push({ type: 'para', key: plainHome, text: stripped }, lineno);
     } else {
       const expanded = raw.replace(/\t/g, '  ');
       const indent = expanded.length - expanded.replace(/^ +/, '').length;
@@ -1530,6 +1534,22 @@ function anchorRefs(profile, ids) {
   return refs(ids, key);
 }
 
+/** 이름으로 부를 수 있는 용지. [가로 mm, 세로 mm] — engine.py의 PAPER_SIZES와 같다 */
+export const PAPER_SIZES = {
+  A4: [210.0, 297.0], B5: [182.0, 257.0], A5: [148.0, 210.0],
+  A3: [297.0, 420.0], B4: [257.0, 364.0], Letter: [215.9, 279.4],
+  크라운: [166.0, 241.0], 크라운판: [166.0, 241.0], crown: [166.0, 241.0],
+  신국판: [152.0, 225.0], 국판: [148.0, 210.0], '4x6배판': [188.0, 257.0],
+};
+
+/** 프로파일의 용지 → [가로 mm, 세로 mm]. `width_mm`·`height_mm`가 이름보다 이긴다 */
+export function paperMm(page) {
+  if (page.width_mm && page.height_mm) return [Number(page.width_mm), Number(page.height_mm)];
+  const name = String(page.size || '').trim().toLowerCase();
+  const hit = Object.entries(PAPER_SIZES).find(([key]) => key.toLowerCase() === name);
+  return hit ? hit[1] : null;
+}
+
 function buildSection(templateSection, profile, ids, items, grids) {
   const margin = profile.page.margin_mm;
   let head = templateSection.slice(0, templateSection.indexOf('</hp:p>') + '</hp:p>'.length);
@@ -1537,6 +1557,11 @@ function buildSection(templateSection, profile, ids, items, grids) {
     `<hp:margin header="${mm(margin.header)}" footer="${mm(margin.footer)}" gutter="0"`
     + ` left="${mm(margin.left)}" right="${mm(margin.right)}" top="${mm(margin.top)}"`
     + ` bottom="${mm(margin.bottom)}"/>`);
+  const paper = paperMm(profile.page);
+  if (paper) {
+    head = head.replace(/(<hp:pagePr[^>]*?)width="\d+" height="\d+"/,
+      `$1width="${mm(paper[0])}" height="${mm(paper[1])}"`);
+  }
 
   const nextIdFn = makeIdGen();
   const numbering = makeNumbering(profile);

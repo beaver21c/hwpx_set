@@ -81,6 +81,36 @@ def style_attributes(path: Path) -> dict:
     return out
 
 
+def page_setup(path: Path) -> str:
+    """용지 크기·여백."""
+    with zipfile.ZipFile(str(path)) as zf:
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+    page = re.search(r"<hp:pagePr[^>]*>", section)
+    margin = re.search(r"<hp:margin [^>]*/>", section)
+    return f"{page.group() if page else ''} {margin.group() if margin else ''}"
+
+
+def paragraph_styles(path: Path) -> list:
+    """글자가 든 문단마다 붙은 스타일 이름(문서 순서). 레벨이 제자리로 갔는지 본다.
+
+    빈 문단·표를 싸는 문단은 뺀다. python-hwpx는 빈 문단에 앞 문단 스타일을 물려주고
+    브라우저는 본문 스타일을 주는데, 글자가 없으니 모양에는 차이가 거의 없다.
+    """
+    from xml.etree import ElementTree as ET
+    ns = {"hp": "http://www.hancom.co.kr/hwpml/2011/paragraph"}
+    with zipfile.ZipFile(str(path)) as zf:
+        header = zf.read("Contents/header.xml").decode("utf-8")
+        root = ET.fromstring(zf.read("Contents/section0.xml"))
+    names = dict(re.findall(r'<hh:style id="(\d+)"[^>]*?name="([^"]*)"', header))
+    out = []
+    for para in root.iter(f"{{{ns['hp']}}}p"):
+        text = "".join(t.text or "" for run in para.findall("hp:run", ns)
+                       for t in run.findall("hp:t", ns))
+        if text.strip():
+            out.append(names.get(para.get("styleIDRef", ""), para.get("styleIDRef", "")))
+    return out
+
+
 def texts(path: Path) -> list:
     with zipfile.ZipFile(str(path)) as zf:
         section = zf.read("Contents/section0.xml").decode("utf-8")
@@ -365,6 +395,17 @@ def main() -> int:
             if py_notes != js_notes:
                 failures.append(f"{label}: 각주 불일치\n"
                                 f"    py={py_notes}\n    js={js_notes}")
+
+            if page_setup(py_out) != page_setup(js_out):
+                failures.append(f"{label}: 용지·여백 불일치\n"
+                                f"    py={page_setup(py_out)}\n    js={page_setup(js_out)}")
+
+            py_order, js_order = paragraph_styles(py_out), paragraph_styles(js_out)
+            if py_order != js_order:
+                diff = next((i for i, (a, b) in enumerate(zip(py_order, js_order)) if a != b),
+                            min(len(py_order), len(js_order)))
+                failures.append(f"{label}: 문단 스타일 순서 불일치({diff}번째 문단부터)\n"
+                                f"    py={py_order[diff:diff + 4]}\n    js={js_order[diff:diff + 4]}")
 
             py_tables, js_tables = table_shapes(py_out), table_shapes(js_out)
             if py_tables != js_tables:

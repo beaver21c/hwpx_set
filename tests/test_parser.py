@@ -49,3 +49,12 @@ def test_unmarked_line_falls_back_by_indent(policy):
 def test_narrative_mode_keeps_body(narrative):
     r = parse_text("# 제목\n첫 문단이다.\n\n둘째 문단이다.\n", narrative)
     assert keys(r.items) == ["title", "body", "body"]
+
+
+def test_unmarked_line_goes_to_the_markerless_level():
+    """크라운판처럼 마커 없는 레벨(바탕글)이 있으면 평문 줄은 들여쓰기와 상관없이 그리로 간다."""
+    from hwpx_studio.profile import load_profile, resolve_profile_path
+    profile = load_profile(resolve_profile_path("kihasa-research"))
+    parsed = parse_text("### 제목\n평문 줄이다.\n  들여쓴 평문.\n□ 네모", profile)
+    assert [i["key"] for i in parsed.items] == ["num", "text", "text", "box"]
+    assert parsed.warnings == []

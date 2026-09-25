@@ -13,6 +13,7 @@ on:
     branches: [main]
     paths:
       - "docs/**"
+      - "hwpx_studio/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -42,6 +43,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           python tools/build_web.py --check
+      - name: 기본 스킬(크라운판) zip 만들기
+        run: |
+          mkdir -p docs/skills
+          hwpx-studio skill kihasa-research --name "연구보고서 크라운판" \
+            --id hwpx-crown-report --pack docs/skills/hwpx-crown-report.zip
       - id: pages
         uses: actions/configure-pages@v5
         continue-on-error: true
