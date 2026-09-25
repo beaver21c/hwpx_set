@@ -44,14 +44,20 @@ template.hwpx (올린 양식)
 hwpx를 올리고 [해부해서 꾸러미 만들기]를 누른다. 파일은 브라우저 밖으로 나가지
 않는다.
 
-- `.zip` — 폴더로 풀어 쓴다(codex·GPT·파이썬)
-- `.skill` — Claude에 그대로 올린다
+[꾸러미·스킬 내려받기(.zip)] 하나로 받는다. 이 `.zip`이 곧 스킬이다.
+
+- Claude·ChatGPT — 풀지 말고 그대로 올린다(올리는 곳은 `README.md`의 *스킬로 쓰기*)
+- Claude Code — `~/.claude/skills/`에 푼다
+- codex·파이썬 — 아무 폴더에 풀어 `AGENTS.md`·`README.md`대로 쓴다
+
+zip 안 맨 위에는 폴더가 하나 있고, 그 이름은 `SKILL.md`의 `name`과 같다. claude.ai가
+받는 조건(폴더 이름 = 스킬 이름, 설명 200자 이하)에 맞춘 것이다.
 
 ### 파이썬으로
 
 ```bash
 hwpx-studio formkit 양식.hwpx -o 꾸러미/
-hwpx-studio formkit 양식.hwpx --pack 양식.skill
+hwpx-studio formkit 양식.hwpx --pack 양식.zip       # 스킬로 올릴 zip
 hwpx-studio formkit 양식.hwpx --report-only     # 해부 결과만 보기
 ```
 

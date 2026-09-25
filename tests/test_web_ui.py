@@ -378,7 +378,7 @@ def test_browser_bundle_actually_builds_a_document(browser, server, tmp_path):
     out = tmp_path / "풀린곳"
     with zipfile.ZipFile(str(saved)) as zf:
         zf.extractall(str(out))
-    bundle = out / "돌려보기"
+    (bundle,) = [p for p in out.iterdir() if p.is_dir()]
     done = subprocess.run(
         [sys.executable, "build_form.py", "예시.md", "-o", "결과.hwpx"],
         cwd=bundle, capture_output=True, text=True, timeout=120)
@@ -390,15 +390,28 @@ def test_browser_bundle_actually_builds_a_document(browser, server, tmp_path):
             "양식의 서식 정의가 한 바이트도 바뀌면 안 된다"
 
 
-def test_skill_download_uses_the_skill_extension(browser, server, tmp_path):
+def test_bundle_zip_is_an_uploadable_skill(browser, server, tmp_path):
+    """claude.ai에 그대로 올릴 수 있어야 한다: 폴더 이름 = 스킬 이름, 설명 200자 이하."""
+    import re
+    import zipfile
+
     page, _ = open_page(browser, server, "form")
     page.set_input_files("#form-file", str(_fixture_form(tmp_path, "plain")))
     page.fill("#form-name", "스킬시험")
     page.click("#form-run")
     page.wait_for_selector("#form-result", state="visible")
     with page.expect_download() as download:
-        page.click("#form-download-skill")
-    assert download.value.suggested_filename == "스킬시험.skill"
+        page.click("#form-download")
+    assert download.value.suggested_filename == "스킬시험.zip"
+    saved = tmp_path / "skill.zip"
+    download.value.save_as(str(saved))
+    with zipfile.ZipFile(str(saved)) as zf:
+        (root,) = {n.split("/", 1)[0] for n in zf.namelist()}
+        skill_md = zf.read(f"{root}/SKILL.md").decode("utf-8")
+    assert re.search(rf"^name: {re.escape(root)}$", skill_md, re.M)
+    desc = " ".join(skill_md.split("---", 2)[1].split("description:", 1)[1]
+                    .strip().lstrip(">-").split())
+    assert len(desc) <= 200
 
 
 def test_binary_hwp_is_refused_with_guidance(browser, server, tmp_path):

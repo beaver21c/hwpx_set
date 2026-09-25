@@ -81,8 +81,8 @@ def check_skill(target: Path) -> list[str]:
     desc = fields.get("description", "")
     if not desc:
         problems.append("description이 없다(여러 줄 `>-` 표기를 썼는지 확인)")
-    elif len(desc) > 1024:
-        problems.append(f"description이 너무 길다({len(desc)}자)")
+    elif len(desc) > 200:
+        problems.append(f"description이 너무 길다({len(desc)}자, claude.ai는 200자까지)")
     elif desc.startswith((">", "|", "&", "*", "[", "{")):
         problems.append(f"description이 YAML 특수 문자로 시작한다: {desc[:10]!r}")
 

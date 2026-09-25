@@ -141,6 +141,42 @@ def test_packed_bundle_opens_as_a_zip():
     assert f"평범/{BUILDER}" in names
 
 
+def _description(skill_md: str) -> str:
+    front = skill_md.split("---", 2)[1]
+    body = front.split("description:", 1)[1].strip()
+    return " ".join(body.lstrip(">-").split())
+
+
+@pytest.mark.parametrize("name", ["평범", "report-form",
+                                  "아주 긴 이름의 ○○기관 연구보고서 표준 양식 2026년 개정판"])
+def test_skill_zip_meets_claude_upload_rules(name):
+    """claude.ai: zip 안 폴더 이름 = 스킬 이름, 설명 200자 이하."""
+    from hwpx_studio.cli import run_formkit  # noqa: F401  (CLI와 같은 규칙을 쓴다)
+    from hwpx_studio.export_form import _slug
+
+    files, result = build_bundle(plain_form(), name=name)
+    root = _slug(result.form["name"])
+    with zipfile.ZipFile(io.BytesIO(pack_bundle(files, root))) as z:
+        roots = {n.split("/", 1)[0] for n in z.namelist()}
+        skill_md = z.read(f"{root}/SKILL.md").decode("utf-8")
+    assert roots == {root}
+    assert re.search(rf"^name: {re.escape(root)}$", skill_md, re.M)
+    assert len(_description(skill_md)) <= 200
+
+
+def test_cli_pack_puts_the_skill_name_folder_at_root(tmp_path):
+    from hwpx_studio.cli import main
+    source = tmp_path / "연구보고서양식.hwpx"
+    source.write_bytes(plain_form())
+    out = tmp_path / "양식.zip"
+    assert main(["formkit", str(source), "--pack", str(out)]) == 0
+    with zipfile.ZipFile(str(out)) as z:
+        roots = {n.split("/", 1)[0] for n in z.namelist()}
+        (root,) = roots
+        skill_md = z.read(f"{root}/SKILL.md").decode("utf-8")
+    assert re.search(rf"^name: {re.escape(root)}$", skill_md, re.M)
+
+
 # ──────────────────────────────────────────────────────────────
 # 빌드 — 보존이 지켜지는가
 # ──────────────────────────────────────────────────────────────

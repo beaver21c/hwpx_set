@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from hwpx_studio.cli import main
@@ -89,6 +90,8 @@ def test_export_skill_covers_every_diagram_type(tmp_path):
     front = skill_md.split("---")[1]
     for word in ("조직도", "체계도", "절차도"):
         assert word in front, f"description에 '{word}'가 없어 도식 요청에 안 걸린다"
+    desc = re.search(r"^description: (.*)$", front, re.M).group(1)
+    assert len(desc) <= 200, f"claude.ai는 설명을 200자까지만 받는다({len(desc)}자)"
 
 
 def test_export_skill_bundles_a_capture_script(tmp_path):

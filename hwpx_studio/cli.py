@@ -255,17 +255,17 @@ def run_formkit(source: str, out: Optional[str], name: str,
                 pack: Optional[str], report_only: bool,
                 bullets: str = "auto") -> int:
     """양식 hwpx를 해부해 그 양식 전용 꾸러미를 만든다."""
-    from .export_form import build_bundle, pack_bundle, write_bundle
+    from .export_form import _slug, build_bundle, pack_bundle, write_bundle
 
     files, result = build_bundle(source, name=name, bullets=bullets)
     _echo(result.report)
     if report_only:
         return 0
     if not out and not pack:
-        _echo("만들 곳을 지정할 것: -o 폴더 또는 --pack 파일.skill")
+        _echo("만들 곳을 지정할 것: -o 폴더 또는 --pack 파일.zip")
         return 2
 
-    root = result.form["name"]
+    root = _slug(result.form["name"])     # claude.ai: 폴더 이름 = 스킬 이름
     if out:
         path = write_bundle(files, Path(out))
         _echo(f"꾸러미 저장 → {path} ({len(files)}개 파일)")
@@ -376,7 +376,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_form.add_argument("-o", "--out", help="꾸러미를 풀어 놓을 폴더")
     p_form.add_argument("--name", default="", help="양식 이름(기본: 파일 이름)")
     p_form.add_argument("--pack", metavar="PATH",
-                        help="꾸러미를 .skill 한 파일로 묶어 저장")
+                        help="꾸러미를 zip 한 파일로 묶어 저장(Claude·ChatGPT에 스킬로 그대로 올린다)")
     p_form.add_argument("--bullets", default="auto",
                         choices=["auto", "hangul", "text"],
                         help="줄머리 기호를 누가 붙이나 "

@@ -4,7 +4,7 @@ import { HWPX_PROFILES, HWPX_TEMPLATE_B64 } from '../assets.js';
 import { base64ToBytes, buildFromText, buildGrid, lintItems, mergeProfile,
          parseDiagramBlock, parseText } from './hwpx-studio.js';
 import { captureText, specToText } from './capture.js';
-import { buildBundle, packBundle, readContents } from './bundle.js';
+import { buildBundle, packBundle, readContents, slug } from './bundle.js';
 import { analyzeParts } from './formkit.js';
 import { readBack } from './readback.js';
 
@@ -629,9 +629,11 @@ async function downloadBundle(extension) {
   if (!bundleState) return;
   const say = statusOf('form-status');
   const { files, form } = bundleState;
-  const packed = await packBundle(files, form.name);
+  const packed = await packBundle(files, slug(form.name));
   saveFile(packed, `${form.name}.${extension}`, 'application/zip');
-  say(`${form.name}.${extension} 저장됨 (${packed.length.toLocaleString('ko-KR')} bytes)`, 'ok');
+  say(`${form.name}.${extension} 저장됨 (${packed.length.toLocaleString('ko-KR')} bytes). `
+    + '풀지 말고 그대로 올리세요 — Claude: Customize → Skills → + → Upload a skill / '
+    + 'ChatGPT: Skills → Create → Upload from your computer.', 'ok');
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -686,7 +688,7 @@ async function downloadConvertBundle() {
   const { files, form } = convertState.bundle;
   const withDraft = new Map(files);
   withDraft.set('원고.md', new TextEncoder().encode(convertState.text));
-  const packed = await packBundle(withDraft, form.name);
+  const packed = await packBundle(withDraft, slug(form.name));
   saveFile(packed, `${form.name}.zip`, 'application/zip');
   say(`원고가 든 꾸러미를 저장했습니다 (${packed.length.toLocaleString('ko-KR')} bytes). `
     + 'AI에 통째로 주고 "원고.md를 다듬어 build_form.py로 만들어 달라"고 하세요.', 'ok');
@@ -742,7 +744,6 @@ function init() {
     if ($('form-file').files.length) runFormkit();      // 고르면 곧바로 다시 해부한다
   });
   $('form-download').addEventListener('click', () => downloadBundle('zip'));
-  $('form-download-skill').addEventListener('click', () => downloadBundle('skill'));
   $('convert-run').addEventListener('click', runConvert);
   $('convert-download').addEventListener('click', downloadConverted);
   $('convert-bundle').addEventListener('click', downloadConvertBundle);

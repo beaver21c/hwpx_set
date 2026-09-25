@@ -44,9 +44,10 @@ Pages는 켜져 있고 `main` 병합 때마다 [웹 앱 배포](https://github.c
 
 ```bash
 hwpx-studio formkit 양식.hwpx -o 꾸러미/          # 폴더로
-hwpx-studio formkit 양식.hwpx --pack 양식.skill   # Claude 스킬 한 파일로
+hwpx-studio formkit 양식.hwpx --pack 양식.zip     # Claude·ChatGPT 스킬 zip
 ```
 
+이 zip은 그대로 Claude·ChatGPT 스킬로 올린다([스킬로 쓰기](#스킬로-쓰기)).
 꾸러미에는 `template.hwpx`(원본), `form.json`(양식 카드), `build_form.py`(빌더),
 `read_hwpx.py`(되돌리기), `SKILL.md`(Claude), `AGENTS.md`(codex·GPT)가 들어 있다.
 두 파이썬 스크립트는 **표준 라이브러리만** 써서 AI의 코드 실행 환경에서 그냥 돈다.
@@ -79,6 +80,37 @@ python read_hwpx.py 받은문서.hwpx -o 원고.md --report 추정근거.md
 서식없는.hwpx  ─→  되돌리기  ─→  마커 텍스트 (+ 추정 근거)
 ```
 
+## 스킬로 쓰기
+
+웹 앱 ①에 쓰던 양식(.hwpx)을 올리고 **[꾸러미·스킬 내려받기(.zip)]** 를 누르면 그
+`.zip`이 곧 스킬이다. **풀지 말고 그대로** 올린다. 파이썬으로는
+`hwpx-studio formkit 양식.hwpx --pack 양식.zip`.
+
+| | Claude (claude.ai·앱) | ChatGPT |
+|---|---|---|
+| 먼저 | Settings → Capabilities → **Code execution and file creation** 켜기 | — |
+| 올리는 곳 | Customize → Skills → **+** → + Create skill → **Upload a skill** → zip 선택 | Skills → **Create** → **Upload from your computer** |
+| 요금제 | Free·Pro·Max·Team·Enterprise | 확인하지 못함(아래) |
+| 근거 | Claude 도움말 [^c1][^c2] (2026-09-25 확인) | OpenAI 도움말 [^o1] — 이 저장소 작업 환경에서 열리지 않아 **검색 결과 요약으로만** 확인 |
+
+- Team·Enterprise는 조직 관리자가 *Organization settings → Plugins & skills*에서
+  코드 실행과 Skills를 켜 두어야 한다[^c2]
+- zip 조건(claude.ai): 맨 위에 스킬 폴더 하나, **폴더 이름 = `SKILL.md`의 `name`**,
+  설명 **200자 이하**[^c1]. 도구가 이 조건대로 만들고 테스트로 지킨다
+- ChatGPT는 올린 스킬을 검사한 뒤 쓸 수 있게 하고, 일부는 *Needs Review*로 표시된다고
+  한다(검색 결과 요약). 어떤 요금제에서 되는지는 1차 자료로 확인하지 못했다
+- Claude Code: `unzip 양식.zip -d ~/.claude/skills/`
+- 스킬 기능이 없는 환경: zip을 대화에 첨부하고 "`AGENTS.md`대로 `build_form.py`로
+  만들어 달라"고 한다. 꾸러미의 두 스크립트는 표준 라이브러리만 쓰므로 코드 실행만
+  되면 돈다고 본다(추론 — 실제 ChatGPT에서 돌려 보지는 않았다)
+
+**서식을 고쳐 쓰려면** — zip을 풀어 `form.json`(레벨별 마커·기호 담당)을 고친 뒤 폴더째
+다시 zip으로 묶는다. 폴더 이름은 그대로 둔다.
+
+[^c1]: Anthropic. (n.d.). *How to create custom skills*. Claude Help Center. https://support.claude.com/en/articles/12512198-how-to-create-custom-skills
+[^c2]: Anthropic. (n.d.). *Use skills in Claude*. Claude Help Center. https://support.claude.com/en/articles/12512180-use-skills-in-claude
+[^o1]: OpenAI. (n.d.). *Skills in ChatGPT*. OpenAI Help Center. https://help.openai.com/en/articles/20001066-skills-in-chatgpt
+
 ## 도식·조직도를 표로 옮기고 싶다면
 
 문서·웹에 있는 조직도, 추진체계도, 절차도를 **한글에서 편집 가능한 표**로 만드는 길은
@@ -107,15 +139,16 @@ hwpx-studio capture examples/capture/org.mmd --title "위원회 구성" --hwpx �
 > :::
 > ```
 
-자세한 건 `docs/diagram-guide.md`. 어디까지 닮게 만들 수 있고 무엇이 안 되는지는
-되는 범위와 한계는 아래 표와 `docs/diagram-guide.md`에 정리해 두었다.
+자세한 건 `docs/diagram-guide.md`. 되는 범위와 한계는 아래 *확인된 것 / 확인 안 된 것*
+표에 정리해 두었다.
 
 ## 3분 시작
 
 ### Claude Code / 로컬 Python
 
 ```bash
-pip install -e .                       # 또는 pip install hwpx-studio
+pip install "git+https://github.com/beaver21c/hwpx_set.git"              # GitHub에서 바로 설치 (PyPI에는 없다)
+# 저장소를 받아 둔 경우: pip install -e .
 
 hwpx-studio build examples/input_outline.md -p policy-default -o 보고서.hwpx
 hwpx-studio preview 보고서.hwpx -o preview.html      # HTML 근사 미리보기
@@ -124,7 +157,9 @@ hwpx-studio preview 보고서.hwpx -o preview.html      # HTML 근사 미리보�
 ### Colab (무료)
 
 ```python
-!pip install -q hwpx-studio
+!pip install -q "git+https://github.com/beaver21c/hwpx_set.git"
+```
+```python
 %%writefile input.md
 # 사업 추진 현황
 ## 추진 개요
@@ -317,7 +352,7 @@ pytest -q
 HWPX_LEGACY_GENERATOR=/path/to/hwpx_generator.py pytest tests/test_parity.py
 ```
 
-의존성은 `python-hwpx>=6.2,<7`(Apache-2.0)이며, 이미지 도식에만 matplotlib이 추가로 필요하다.
+의존성은 `python-hwpx>=6.2,<7`(Apache-2.0, `lxml` 필요)이며, 이미지 도식에만 matplotlib이 추가로 필요하다.
 
 ## 문서
 
