@@ -1,9 +1,14 @@
 # hwpx-studio
 
+> ### ▶ 바로 쓰기: **<https://beaver21c.github.io/hwpx_set/>**
+>
+> 설치·로그인 없이 브라우저에서 연다. 올린 파일과 입력한 글은 기기 밖으로 나가지 않는다.
+> 인터넷이 없을 때는 [단일 HTML 파일](#웹-앱을-여는-법)을 내려받아 연다.
+
 한국어 보고서를 **한글 문서(.hwpx)** 로 만드는 도구 모음. 한글 프로그램 없이 돈다.
 본문은 마커가 붙은 평범한 텍스트라서 어떤 AI로도, 사람이 직접이라도 쓸 수 있다.
 
-웹 앱에 네 갈래가 있고, 버려진 기능은 없다([여는 법](#웹-앱을-여는-법)).
+[웹 앱](https://beaver21c.github.io/hwpx_set/)에 네 갈래가 있다([다른 여는 법](#웹-앱을-여는-법)).
 
 | | 무엇 | 언제 |
 |---|---|---|
@@ -18,20 +23,16 @@
 
 | 방법 | 주소 | 준비 |
 |---|---|---|
-| **GitHub Pages** | `https://beaver21c.github.io/hwpx_set/` | 저장소 소유자가 **한 번** 켜야 한다(아래) |
+| **GitHub Pages** | <https://beaver21c.github.io/hwpx_set/> | 없음. `main`에 밀 때마다 저절로 새로 배포된다 |
 | **단일 HTML 파일** | Actions → 아무 CI 실행 → `웹앱-단일파일` 아티팩트 | 없음. 내려받아 더블클릭 |
 | 직접 만들기 | `python tools/build_standalone.py` → `dist/hwpx-studio.html` | 파이썬 |
 
-### GitHub Pages 켜기 (한 번, 1분)
+### 웹 앱이 열리지 않을 때
 
-지금은 **꺼져 있다.** 워크플로 토큰으로는 켤 수 없어서 배포가 계속 실패하고 있다.
-
-1. [Settings → Pages](https://github.com/beaver21c/hwpx_set/settings/pages)
-2. *Build and deployment* → **Source**를 `GitHub Actions`로
-3. [Actions → 웹 앱 배포](https://github.com/beaver21c/hwpx_set/actions/workflows/pages.yml)
-   → **Run workflow** (브랜치를 골라 병합 전에도 올릴 수 있다)
-
-켜고 나면 `main`에 밀 때마다 저절로 배포된다.
+Pages는 켜져 있고 `main` 병합 때마다 [웹 앱 배포](https://github.com/beaver21c/hwpx_set/actions/workflows/pages.yml)
+워크플로가 올린다. 주소가 404이면 그 워크플로의 마지막 실행이 실패했는지 보고,
+[Settings → Pages](https://github.com/beaver21c/hwpx_set/settings/pages)의
+**Source**가 `GitHub Actions`인지 확인한다.
 
 ### ① 양식 보존이 무엇이 다른가
 
