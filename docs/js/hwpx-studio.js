@@ -66,6 +66,8 @@ export const DEFAULT_PROFILE = {
     min_children: {}, period_policy: 'single_sentence_no_period',
     footnote_position: 'before_period',
   },
+  // 표·그림 번호 모양. {장}은 장 번호, {번호}는 그 장 안의 순번. 장이 없으면 `{장}-`를 뺀다
+  captions: { table: '〈표 {장}-{번호}〉', figure: '〔그림 {장}-{번호}〕' },
 };
 
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -118,6 +120,8 @@ export function parseText(text, profile) {
     .map((lv) => [lv.marker, lv.key])
     .sort((a, b) => b[0].length - a[0].length);
   const fallback = bodyLevels(profile).map((lv) => lv.key);
+  // 마커가 없는 레벨 — 마커 없는 줄이 갈 제자리(예: 크라운판의 바탕글)
+  const plainHome = (bodyLevels(profile).find((lv) => !lv.marker) || {}).key || null;
   const narrative = profile.mode === 'narrative';
 
   const items = [];
@@ -206,6 +210,8 @@ export function parseText(text, profile) {
 
     if (narrative || !fallback.length) {
       push({ type: 'para', key: 'body', text: stripped }, lineno);
+    } else if (plainHome) {
+      push({ type: 'para', key: plainHome, text: stripped }, lineno);
     } else {
       const expanded = raw.replace(/\t/g, '  ');
       const indent = expanded.length - expanded.replace(/^ +/, '').length;
@@ -1300,7 +1306,14 @@ function patchHeader(xml, profile, ids, diagramFills, textKeys = []) {
   return x;
 }
 
-function autoPrefix(kind, n, chapter = 0) {
+/** 캡션 번호. 장 번호가 없으면(0) `{장}`과 뒤따르는 구분 기호를 뺀다 */
+export function captionPrefix(format, chapter, n) {
+  let fmt = String(format);
+  if (!chapter) fmt = fmt.replace(/\{장\}[-.·]?/g, '');
+  return `${fmt.split('{장}').join(String(chapter)).split('{번호}').join(String(n + 1))} `;
+}
+
+function autoPrefix(kind, n, chapter = 0, captions = DEFAULT_PROFILE.captions) {
   if (kind === 'AUTO_ROMAN') return n < ROMAN.length ? `${ROMAN[n]}. ` : `${n + 1}. `;
   if (kind === 'AUTO_NUM') return `${n + 1}. `;
   if (kind === 'AUTO_ALPHA') return n < 26 ? `${String.fromCharCode(65 + n)}. ` : `${n + 1}. `;
@@ -1309,8 +1322,8 @@ function autoPrefix(kind, n, chapter = 0) {
   if (kind === 'AUTO_CHAPTER') return `제${n + 1}장 `;   // 연구보고서 장 제목
   if (kind === 'AUTO_SECTION') return `제${n + 1}절 `;   // 연구보고서 절 제목
   if (kind === 'AUTO_PAREN') return `${n + 1}) `;        // 숫자에 닫는 괄호
-  if (kind === 'AUTO_TABLE') return `〈표 ${chapter}-${n + 1}〉 `;   // 장 번호를 따라간다
-  if (kind === 'AUTO_FIGURE') return `〔그림 ${chapter}-${n + 1}〕 `;
+  if (kind === 'AUTO_TABLE') return captionPrefix(captions.table || DEFAULT_PROFILE.captions.table, chapter, n);
+  if (kind === 'AUTO_FIGURE') return captionPrefix(captions.figure || DEFAULT_PROFILE.captions.figure, chapter, n);
   return '';
 }
 
@@ -1325,7 +1338,7 @@ function makeNumbering(profile) {
     const idx = order.indexOf(key);
     const value = counters.get(key) || 0;
     if (chapterKeys.has(key)) chapter = value + 1;
-    const text = autoPrefix(kind, value, chapter);
+    const text = autoPrefix(kind, value, chapter, profile.captions || DEFAULT_PROFILE.captions);
     counters.set(key, value + 1);
     order.slice(idx + 1).forEach((deeper) => counters.set(deeper, 0));
     return text;
@@ -1530,6 +1543,22 @@ function anchorRefs(profile, ids) {
   return refs(ids, key);
 }
 
+/** 이름으로 부를 수 있는 용지. [가로 mm, 세로 mm] — engine.py의 PAPER_SIZES와 같다 */
+export const PAPER_SIZES = {
+  A4: [210.0, 297.0], B5: [182.0, 257.0], A5: [148.0, 210.0],
+  A3: [297.0, 420.0], B4: [257.0, 364.0], Letter: [215.9, 279.4],
+  크라운: [166.0, 241.0], 크라운판: [166.0, 241.0], crown: [166.0, 241.0],
+  신국판: [152.0, 225.0], 국판: [148.0, 210.0], '4x6배판': [188.0, 257.0],
+};
+
+/** 프로파일의 용지 → [가로 mm, 세로 mm]. `width_mm`·`height_mm`가 이름보다 이긴다 */
+export function paperMm(page) {
+  if (page.width_mm && page.height_mm) return [Number(page.width_mm), Number(page.height_mm)];
+  const name = String(page.size || '').trim().toLowerCase();
+  const hit = Object.entries(PAPER_SIZES).find(([key]) => key.toLowerCase() === name);
+  return hit ? hit[1] : null;
+}
+
 function buildSection(templateSection, profile, ids, items, grids) {
   const margin = profile.page.margin_mm;
   let head = templateSection.slice(0, templateSection.indexOf('</hp:p>') + '</hp:p>'.length);
@@ -1537,6 +1566,11 @@ function buildSection(templateSection, profile, ids, items, grids) {
     `<hp:margin header="${mm(margin.header)}" footer="${mm(margin.footer)}" gutter="0"`
     + ` left="${mm(margin.left)}" right="${mm(margin.right)}" top="${mm(margin.top)}"`
     + ` bottom="${mm(margin.bottom)}"/>`);
+  const paper = paperMm(profile.page);
+  if (paper) {
+    head = head.replace(/(<hp:pagePr[^>]*?)width="\d+" height="\d+"/,
+      `$1width="${mm(paper[0])}" height="${mm(paper[1])}"`);
+  }
 
   const nextIdFn = makeIdGen();
   const numbering = makeNumbering(profile);

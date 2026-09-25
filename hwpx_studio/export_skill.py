@@ -214,7 +214,7 @@ def main() -> int:
     try:
         from hwpx_studio.cli import run_build
     except ImportError:
-        print("hwpx-studio가 필요합니다: pip install hwpx-studio", file=sys.stderr)
+        print("hwpx-studio가 필요합니다: pip install git+https://github.com/beaver21c/hwpx_set.git", file=sys.stderr)
         return 2
     return run_build(args.input, args.profile, args.out, strict=args.strict,
                      preview_path=args.preview, lint=not args.no_lint)
@@ -255,7 +255,7 @@ def main() -> int:
     try:
         from hwpx_studio.cli import run_capture
     except ImportError:
-        print("hwpx-studio가 필요합니다: pip install hwpx-studio", file=sys.stderr)
+        print("hwpx-studio가 필요합니다: pip install git+https://github.com/beaver21c/hwpx_set.git", file=sys.stderr)
         return 2
     return run_capture(args.source, args.out, args.kind, args.title,
                        args.hwpx, str(PROFILE))
@@ -285,7 +285,7 @@ def main() -> int:
     ap.add_argument("source", help="양식이 될 .hwpx")
     ap.add_argument("-o", "--out", help="꾸러미를 풀어 놓을 폴더")
     ap.add_argument("--name", default="", help="양식 이름(기본: 파일 이름)")
-    ap.add_argument("--pack", help="꾸러미를 .skill 한 파일로 묶어 저장")
+    ap.add_argument("--pack", help="꾸러미를 zip 한 파일로 묶어 저장(스킬 업로드용)")
     ap.add_argument("--bullets", default="auto",
                     choices=["auto", "hangul", "text"],
                     help="줄머리 기호를 누가 붙이나")
@@ -295,7 +295,7 @@ def main() -> int:
     try:
         from hwpx_studio.cli import run_formkit
     except ImportError:
-        print("hwpx-studio가 필요합니다: pip install hwpx-studio", file=sys.stderr)
+        print("hwpx-studio가 필요합니다: pip install git+https://github.com/beaver21c/hwpx_set.git", file=sys.stderr)
         return 2
     return run_formkit(args.source, args.out, args.name, args.pack,
                        args.report_only, args.bullets)
@@ -322,15 +322,10 @@ def export_skill(profile: Dict[str, Any], out_dir: str,
         or "- 특별한 제약 없음"
     markers = " ".join(lv.get("marker", "") for lv in body_levels(profile) if lv.get("marker"))
     description = (
-        f"{profile.get('name', '보고서')} 서식으로 한국어 보고서를 .hwpx로 생성한다. "
-        f"마커({markers}) 텍스트를 쓰면 변환한다. "
-        "근거는 [^1] 표기로 8pt 회색 한글 각주가 된다. "
-        "조직도·체계도·절차도·전략체계도를 한글에서 편집 가능한 **표**로 그려 넣고, "
-        "그림·Mermaid·SVG로 된 기존 도식을 읽어 같은 모양으로 옮긴다. "
-        "'한글 보고서', '.hwpx', '보고서로 만들어줘', '조직도', '체계도', '절차도', "
-        "'전략체계도', '각주', '출처 표시', '이 도식을 한글로' 요청 시 사용."
+        f"{profile.get('name', '보고서')} 서식으로 한국어 보고서를 .hwpx로 만든다. "
+        f"마커({markers}) 텍스트를 변환하고 [^1] 각주, 조직도·절차도·전략체계도를 "
+        "한글에서 편집 가능한 표로 넣는다. '한글 보고서', '.hwpx', '조직도', '체계도' 요청 시 사용."
     )
-
     description = " ".join(description.split())        # 프론트매터는 한 줄이어야 한다
     (out / "SKILL.md").write_text(SKILL_TEMPLATE.format(
         slug=slug,

@@ -378,7 +378,7 @@ def test_browser_bundle_actually_builds_a_document(browser, server, tmp_path):
     out = tmp_path / "풀린곳"
     with zipfile.ZipFile(str(saved)) as zf:
         zf.extractall(str(out))
-    bundle = out / "돌려보기"
+    (bundle,) = [p for p in out.iterdir() if p.is_dir()]
     done = subprocess.run(
         [sys.executable, "build_form.py", "예시.md", "-o", "결과.hwpx"],
         cwd=bundle, capture_output=True, text=True, timeout=120)
@@ -390,15 +390,28 @@ def test_browser_bundle_actually_builds_a_document(browser, server, tmp_path):
             "양식의 서식 정의가 한 바이트도 바뀌면 안 된다"
 
 
-def test_skill_download_uses_the_skill_extension(browser, server, tmp_path):
+def test_bundle_zip_is_an_uploadable_skill(browser, server, tmp_path):
+    """claude.ai에 그대로 올릴 수 있어야 한다: 폴더 이름 = 스킬 이름, 설명 200자 이하."""
+    import re
+    import zipfile
+
     page, _ = open_page(browser, server, "form")
     page.set_input_files("#form-file", str(_fixture_form(tmp_path, "plain")))
     page.fill("#form-name", "스킬시험")
     page.click("#form-run")
     page.wait_for_selector("#form-result", state="visible")
     with page.expect_download() as download:
-        page.click("#form-download-skill")
-    assert download.value.suggested_filename == "스킬시험.skill"
+        page.click("#form-download")
+    assert download.value.suggested_filename == "스킬시험.zip"
+    saved = tmp_path / "skill.zip"
+    download.value.save_as(str(saved))
+    with zipfile.ZipFile(str(saved)) as zf:
+        (root,) = {n.split("/", 1)[0] for n in zf.namelist()}
+        skill_md = zf.read(f"{root}/SKILL.md").decode("utf-8")
+    assert re.search(rf"^name: {re.escape(root)}$", skill_md, re.M)
+    desc = " ".join(skill_md.split("---", 2)[1].split("description:", 1)[1]
+                    .strip().lstrip(">-").split())
+    assert len(desc) <= 200
 
 
 def test_binary_hwp_is_refused_with_guidance(browser, server, tmp_path):
@@ -479,4 +492,79 @@ def test_bullet_source_can_be_chosen_in_the_page(browser, server, tmp_path):
     page.select_option("#form-bullets", "auto")
     page.wait_for_timeout(600)
     assert "두 번 찍힌다" not in page.inner_text("#form-report")
+    assert problems == []
+
+
+# ──────────────────────────────────────────────────────────────
+# ★ 스킬 만들기
+# ──────────────────────────────────────────────────────────────
+def test_skill_lane_is_the_front_door(browser, server):
+    page = browser.new_page(viewport={"width": 420, "height": 900})
+    page.goto(server, wait_until="networkidle")
+    assert page.is_visible('[data-panel="skill"]'), "처음 열면 스킬 만들기가 보여야 한다"
+    assert page.input_value("#skill-preset") == "report-crown", "기본은 크라운판"
+
+
+def test_edited_skill_downloads_and_builds_without_installs(browser, server, tmp_path):
+    """서식을 고쳐 받은 스킬을 풀어, 설치 없는 파이썬으로 예시를 만든다. 고친 값이 들어가야 한다."""
+    import json
+    import re
+    import subprocess
+    import sys
+    import zipfile
+
+    page, problems = open_page(browser, server, "skill")
+    page.click('summary:has-text("각주")')
+    page.select_option('[data-path="rules.period_policy"]', "never_period")
+    page.select_option("#skill-paper", "A4")          # 문체·용지는 처음부터 열려 있다
+    page.fill("#skill-id", "my-a4-report")
+    with page.expect_download() as download:
+        page.click("#skill-download")
+    saved = tmp_path / "skill.zip"
+    download.value.save_as(str(saved))
+    assert problems == []
+
+    with zipfile.ZipFile(str(saved)) as zf:
+        zf.extractall(str(tmp_path / "x"))
+    root = tmp_path / "x" / "my-a4-report"
+    profile = json.loads((root / "profile.json").read_text(encoding="utf-8"))
+    assert profile["rules"]["period_policy"] == "never_period"
+    assert profile["page"]["width_mm"] == 210
+    assert re.search(r"^name: my-a4-report$", (root / "SKILL.md").read_text(encoding="utf-8"), re.M)
+
+    done = subprocess.run(
+        [sys.executable, "-S", "scripts/hwpx_build.py", "예시.md", "-o", "r.hwpx"],
+        cwd=root, capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stdout + done.stderr
+    with zipfile.ZipFile(str(root / "r.hwpx")) as zf:
+        section = zf.read("Contents/section0.xml").decode("utf-8")
+    assert 'width="59529"' in section, "A4(210mm)로 바꾼 용지가 문서에 들어가야 한다"
+
+
+def test_level_editor_changes_the_marker_table(browser, server):
+    page, _ = open_page(browser, server, "skill")
+    page.click('summary:has-text("위계")')
+    first = page.locator('#skill-levels input[data-key="marker"]').first
+    first.fill("@")
+    first.dispatch_event("change")
+    assert "@" in page.inner_text("#skill-markers")
+
+
+def test_caption_format_reaches_the_skill(browser, server, tmp_path):
+    import json
+    import zipfile
+
+    page, problems = open_page(browser, server, "skill")
+    page.click('summary:has-text("위계")')
+    field = page.locator('[data-path="captions.table"]')
+    field.fill("<표 {장}.{번호}>")
+    field.dispatch_event("change")
+    assert "<표 1.1>" in page.inner_text("#skill-markers")
+    with page.expect_download() as download:
+        page.click("#skill-download")
+    saved = tmp_path / "s.zip"
+    download.value.save_as(str(saved))
+    with zipfile.ZipFile(str(saved)) as zf:
+        (profile_path,) = [n for n in zf.namelist() if n.endswith("profile.json")]
+        assert json.loads(zf.read(profile_path))["captions"]["table"] == "<표 {장}.{번호}>"
     assert problems == []

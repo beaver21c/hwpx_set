@@ -26,6 +26,15 @@ export async function readContents(buffer) {
   return out;
 }
 
+export const SHORT_NAME_MAX = 20;
+
+/** 스킬 설명에 넣을 이름. claude.ai는 설명을 200자까지만 받는다. 파이썬 쪽과 같아야 한다. */
+export function shortName(name) {
+  const flat = String(name).split(/\s+/).filter(Boolean).join(' ');
+  const chars = Array.from(flat);
+  return chars.length <= SHORT_NAME_MAX ? flat : `${chars.slice(0, SHORT_NAME_MAX - 1).join('')}…`;
+}
+
 export function slug(name) {
   let out = '';
   for (const ch of String(name).toLowerCase()) {
@@ -102,6 +111,7 @@ export function bundleFields(form) {
   return {
     name,
     slug: slug(name),
+    short: shortName(name),
     markers: markerRows(form),
     footnote: form.footnote ? '각주는 근거가 되는 말 뒤에 `[^1]`로 단다. ' : '',
   };
@@ -140,7 +150,7 @@ export async function buildBundle(buffer, name, bullets = 'auto') {
   return { files, form, report };
 }
 
-/** 꾸러미를 폴더 한 겹을 둔 zip으로 묶는다(.skill로 써도 된다). */
+/** 꾸러미를 폴더 한 겹을 둔 zip으로 묶는다. 폴더 이름은 스킬 이름(slug)이어야 claude.ai가 받는다. */
 export async function packBundle(files, root) {
   const packed = new Map();
   for (const [name, data] of files) packed.set(`${root}/${name}`, data);

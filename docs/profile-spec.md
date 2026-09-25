@@ -91,7 +91,18 @@ hwpx-studio extract 기존문서.hwpx -o my.json      # 기존 hwpx에서 역생
 | `line_spacing` / `align` | `130` / `"JUSTIFY"` | 줄 간격(%) / 정렬 |
 | `name` / `eng_name` | `"각주"` / `"Footnote"` | 스타일 이름. **바꾸지 말 것** — 한글이 이 이름으로 각주 스타일을 찾는다 |
 
-## 6. rules
+## 6. captions — 표·그림 번호 모양
+
+| 키 | 기본값 | 뜻 |
+|---|---|---|
+| `table` | `"〈표 {장}-{번호}〉"` | 머리가 `AUTO_TABLE`인 단계(표 제목)에 찍히는 번호 |
+| `figure` | `"〔그림 {장}-{번호}〕"` | 머리가 `AUTO_FIGURE`인 단계(그림 제목)에 찍히는 번호 |
+
+`{장}`은 장 번호(머리가 `AUTO_CHAPTER`인 단계를 센 값), `{번호}`는 그 장 안의 순번이다.
+장 단계가 없거나 첫 장보다 앞이면 `{장}`과 바로 뒤 구분 기호(`-` `.` `·`)를 뺀다 —
+`〈표 {장}-{번호}〉` → `〈표 1〉`. 예: `"<표 {장}.{번호}>"`, `"[그림 {번호}]"`.
+
+## 7. rules
 
 | 키 | 뜻 |
 |---|---|
@@ -100,7 +111,7 @@ hwpx-studio extract 기존문서.hwpx -o my.json      # 기존 hwpx에서 역생
 | `period_policy` | `single_sentence_no_period`(기본) / `always_period` / `never_period` / `off` |
 | `footnote_position` | 각주 번호를 문장 끝 마침표의 앞에 두는가 뒤에 두는가. `before_period`(기본, 국내 관행) / `after_period`(시카고식) / `off`. lint의 `footnote` 검사 |
 
-## 7. 검증
+## 8. 검증
 
 ```python
 from hwpx_studio.profile import load_profile, validate_profile
@@ -112,7 +123,7 @@ validate_profile(load_profile("my.json"))   # [] 이면 통과
 `head_pattern`이 정규식이 아닌 경우, `footnote` 블록의 색·크기·글꼴·정렬 값,
 `footnote_position` 값.
 
-## 8. 추출(extract)이 판단하는 방식
+## 9. 추출(extract)이 판단하는 방식
 
 | 판단 | 규칙 |
 |---|---|
@@ -127,7 +138,7 @@ validate_profile(load_profile("my.json"))   # [] 이면 통과
 임계값은 `hwpx_studio/extractor.py`의 `TABLE_ONLY_RATIO`, `LAYOUT_TABLE_MAX_CELLS`,
 `SHORT_TEXT_LEN`, `SHORT_TEXT_RATIO`로 조정한다.
 
-## 9. ID 배정 방식
+## 10. ID 배정 방식
 
 프로파일에는 한글 내부 ID(charPr/paraPr/style)가 없다. 엔진이 템플릿의 `itemCnt`를
 읽어 **비어 있는 번호부터 순서대로** 배정하므로, 레벨을 늘리거나 줄여도 ID 충돌이

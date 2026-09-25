@@ -1,9 +1,35 @@
 # hwpx-studio
 
+> ### ▶ 바로 쓰기: **<https://beaver21c.github.io/hwpx_set/>**
+>
+> 설치·로그인 없이 브라우저에서 연다. 올린 파일과 입력한 글은 기기 밖으로 나가지 않는다.
+> 인터넷이 없을 때는 [단일 HTML 파일](#웹-앱을-여는-법)을 내려받아 연다.
+>
+> **기본 스킬(크라운판) 바로 받기**: <https://beaver21c.github.io/hwpx_set/skills/hwpx-crown-report.zip>
+> → Claude·ChatGPT에 그대로 올린다([올리는 법](#스킬로-쓰기))
+
 한국어 보고서를 **한글 문서(.hwpx)** 로 만드는 도구 모음. 한글 프로그램 없이 돈다.
 본문은 마커가 붙은 평범한 텍스트라서 어떤 AI로도, 사람이 직접이라도 쓸 수 있다.
 
-웹 앱에 네 갈래가 있고, 버려진 기능은 없다([여는 법](#웹-앱을-여는-법)).
+## Claude·ChatGPT 채팅창에서 쓰기 — 스킬
+
+| 하고 싶은 것 | 어떻게 |
+|---|---|
+| 그냥 쓴다(크라운판) | 위 **기본 스킬 zip**을 받아 채팅창에 올린다 |
+| 서식을 고쳐 쓴다 | 웹 앱 **★ 스킬 만들기** → 개조식·서술식, 위계(단계별 마커·번호·크기·여백), 용지·여백, 캡션, 글꼴, 표·도식 색, 각주, 온점 규칙을 고른다 → [예시 문서 받기]로 한글에서 확인 → [스킬 받기(.zip)] |
+| 기관 양식 그대로 쓴다 | 웹 앱 **① 양식으로 도구 만들기**에 쓰던 .hwpx를 올린다 → [꾸러미·스킬 내려받기(.zip)] |
+
+올린 뒤 채팅창에서 "○○ 보고서를 한글 파일로 만들어 줘"라고 하면, AI가 본문을 마커
+텍스트로 쓰고 스킬 안의 빌더(`scripts/hwpx_build.py`)로 **표·도식·각주까지 든 .hwpx**를
+만들어 건넨다. 빌더는 **파이썬 표준 라이브러리만** 써서 채팅창의 코드 실행 환경에
+설치할 것이 없다(테스트가 `python -S`, 곧 설치 패키지 없는 파이썬으로 확인한다).
+
+파이썬으로 만들 때: `hwpx-studio skill report-crown --id hwpx-crown-report --pack 크라운판.zip`
+(서식 JSON 경로를 주면 그 서식으로).
+
+## 웹 앱의 다른 갈래
+
+[웹 앱](https://beaver21c.github.io/hwpx_set/)에는 스킬 만들기 말고도 네 갈래가 있다([다른 여는 법](#웹-앱을-여는-법)).
 
 | | 무엇 | 언제 |
 |---|---|---|
@@ -18,20 +44,16 @@
 
 | 방법 | 주소 | 준비 |
 |---|---|---|
-| **GitHub Pages** | `https://beaver21c.github.io/hwpx_set/` | 저장소 소유자가 **한 번** 켜야 한다(아래) |
+| **GitHub Pages** | <https://beaver21c.github.io/hwpx_set/> | 없음. `main`에 밀 때마다 저절로 새로 배포된다 |
 | **단일 HTML 파일** | Actions → 아무 CI 실행 → `웹앱-단일파일` 아티팩트 | 없음. 내려받아 더블클릭 |
 | 직접 만들기 | `python tools/build_standalone.py` → `dist/hwpx-studio.html` | 파이썬 |
 
-### GitHub Pages 켜기 (한 번, 1분)
+### 웹 앱이 열리지 않을 때
 
-지금은 **꺼져 있다.** 워크플로 토큰으로는 켤 수 없어서 배포가 계속 실패하고 있다.
-
-1. [Settings → Pages](https://github.com/beaver21c/hwpx_set/settings/pages)
-2. *Build and deployment* → **Source**를 `GitHub Actions`로
-3. [Actions → 웹 앱 배포](https://github.com/beaver21c/hwpx_set/actions/workflows/pages.yml)
-   → **Run workflow** (브랜치를 골라 병합 전에도 올릴 수 있다)
-
-켜고 나면 `main`에 밀 때마다 저절로 배포된다.
+Pages는 켜져 있고 `main` 병합 때마다 [웹 앱 배포](https://github.com/beaver21c/hwpx_set/actions/workflows/pages.yml)
+워크플로가 올린다. 주소가 404이면 그 워크플로의 마지막 실행이 실패했는지 보고,
+[Settings → Pages](https://github.com/beaver21c/hwpx_set/settings/pages)의
+**Source**가 `GitHub Actions`인지 확인한다.
 
 ### ① 양식 보존이 무엇이 다른가
 
@@ -43,9 +65,10 @@
 
 ```bash
 hwpx-studio formkit 양식.hwpx -o 꾸러미/          # 폴더로
-hwpx-studio formkit 양식.hwpx --pack 양식.skill   # Claude 스킬 한 파일로
+hwpx-studio formkit 양식.hwpx --pack 양식.zip     # Claude·ChatGPT 스킬 zip
 ```
 
+이 zip은 그대로 Claude·ChatGPT 스킬로 올린다([스킬로 쓰기](#스킬로-쓰기)).
 꾸러미에는 `template.hwpx`(원본), `form.json`(양식 카드), `build_form.py`(빌더),
 `read_hwpx.py`(되돌리기), `SKILL.md`(Claude), `AGENTS.md`(codex·GPT)가 들어 있다.
 두 파이썬 스크립트는 **표준 라이브러리만** 써서 AI의 코드 실행 환경에서 그냥 돈다.
@@ -78,6 +101,36 @@ python read_hwpx.py 받은문서.hwpx -o 원고.md --report 추정근거.md
 서식없는.hwpx  ─→  되돌리기  ─→  마커 텍스트 (+ 추정 근거)
 ```
 
+## 스킬로 쓰기
+
+웹 앱 **★ 스킬 만들기**나 **①**에서 받은 `.zip`, 또는 위 기본 스킬 zip이 곧 스킬이다.
+**풀지 말고 그대로** 올린다.
+
+| | Claude (claude.ai·앱) | ChatGPT |
+|---|---|---|
+| 먼저 | Settings → Capabilities → **Code execution and file creation** 켜기 | — |
+| 올리는 곳 | Customize → Skills → **+** → + Create skill → **Upload a skill** → zip 선택 | Skills → **Create** → **Upload from your computer** |
+| 요금제 | Free·Pro·Max·Team·Enterprise | 확인하지 못함(아래) |
+| 근거 | Claude 도움말 [^c1][^c2] (2026-09-25 확인) | OpenAI 도움말 [^o1] — 이 저장소 작업 환경에서 열리지 않아 **검색 결과 요약으로만** 확인 |
+
+- Team·Enterprise는 조직 관리자가 *Organization settings → Plugins & skills*에서
+  코드 실행과 Skills를 켜 두어야 한다[^c2]
+- zip 조건(claude.ai): 맨 위에 스킬 폴더 하나, **폴더 이름 = `SKILL.md`의 `name`**,
+  설명 **200자 이하**[^c1]. 도구가 이 조건대로 만들고 테스트로 지킨다
+- ChatGPT는 올린 스킬을 검사한 뒤 쓸 수 있게 하고, 일부는 *Needs Review*로 표시된다고
+  한다(검색 결과 요약). 어떤 요금제에서 되는지는 1차 자료로 확인하지 못했다
+- Claude Code: `unzip 양식.zip -d ~/.claude/skills/`
+- 스킬 기능이 없는 환경: zip을 대화에 첨부하고 "`AGENTS.md`대로 `build_form.py`로
+  만들어 달라"고 한다. 꾸러미의 두 스크립트는 표준 라이브러리만 쓰므로 코드 실행만
+  되면 돈다고 본다(추론 — 실제 ChatGPT에서 돌려 보지는 않았다)
+
+**서식을 고쳐 쓰려면** — zip을 풀어 `form.json`(레벨별 마커·기호 담당)을 고친 뒤 폴더째
+다시 zip으로 묶는다. 폴더 이름은 그대로 둔다.
+
+[^c1]: Anthropic. (n.d.). *How to create custom skills*. Claude Help Center. https://support.claude.com/en/articles/12512198-how-to-create-custom-skills
+[^c2]: Anthropic. (n.d.). *Use skills in Claude*. Claude Help Center. https://support.claude.com/en/articles/12512180-use-skills-in-claude
+[^o1]: OpenAI. (n.d.). *Skills in ChatGPT*. OpenAI Help Center. https://help.openai.com/en/articles/20001066-skills-in-chatgpt
+
 ## 도식·조직도를 표로 옮기고 싶다면
 
 문서·웹에 있는 조직도, 추진체계도, 절차도를 **한글에서 편집 가능한 표**로 만드는 길은
@@ -106,15 +159,16 @@ hwpx-studio capture examples/capture/org.mmd --title "위원회 구성" --hwpx �
 > :::
 > ```
 
-자세한 건 `docs/diagram-guide.md`. 어디까지 닮게 만들 수 있고 무엇이 안 되는지는
-되는 범위와 한계는 아래 표와 `docs/diagram-guide.md`에 정리해 두었다.
+자세한 건 `docs/diagram-guide.md`. 되는 범위와 한계는 아래 *확인된 것 / 확인 안 된 것*
+표에 정리해 두었다.
 
 ## 3분 시작
 
 ### Claude Code / 로컬 Python
 
 ```bash
-pip install -e .                       # 또는 pip install hwpx-studio
+pip install "git+https://github.com/beaver21c/hwpx_set.git"              # GitHub에서 바로 설치 (PyPI에는 없다)
+# 저장소를 받아 둔 경우: pip install -e .
 
 hwpx-studio build examples/input_outline.md -p policy-default -o 보고서.hwpx
 hwpx-studio preview 보고서.hwpx -o preview.html      # HTML 근사 미리보기
@@ -123,7 +177,9 @@ hwpx-studio preview 보고서.hwpx -o preview.html      # HTML 근사 미리보�
 ### Colab (무료)
 
 ```python
-!pip install -q hwpx-studio
+!pip install -q "git+https://github.com/beaver21c/hwpx_set.git"
+```
+```python
 %%writefile input.md
 # 사업 추진 현황
 ## 추진 개요
@@ -200,7 +256,7 @@ hwpx-studio export-skill policy-default -o ~/.claude/skills/hwpx-report-studio -
 **그림·캡처뿐인 도식**은 도구가 읽지 못한다. 그 경우 SKILL.md가 에이전트에게
 "직접 그림을 보고 형식대로 받아쓴 뒤 사용자 확인을 받으라"고 지시한다.
 
-집필 규칙까지 얹은 스킬(KIHASA 작업 절차·머릿글 규칙 포함)은 `skills/`에 있다.
+집필 규칙까지 얹은 스킬(작업 절차·머릿글 규칙 포함)은 `skills/`에 있다.
 
 ```bash
 python skills/build.py -o ~/.claude/skills      # 조립 + 설치
@@ -258,7 +314,7 @@ python skills/build.py -o ~/.claude/skills      # 조립 + 설치
 | `policy-default` | Ⅰ./1./□/○/-/·/※ 7레벨 (기존 생성기와 동일 서식) |
 | `gov-3level` | Ⅰ./1./□/○/- 5레벨, 흑백 |
 | `narrative` | 서술식(제목 + 본문 문단, 첫 줄 들여쓰기) |
-| `kihasa-research` | 연구보고서 **크라운판(166×241mm)** — 제N장/제N절/1./가./1), 개조식 □○-·, 표·그림 번호는 장을 따라감. 값은 기관 서식 실측치 |
+| `report-crown` | 연구보고서 **크라운판(166×241mm)** — 제N장/제N절/1./가./1), 개조식 □○-·, 표·그림 번호는 장을 따라감(모양은 `captions`로 바꾼다). 값은 실제 크라운판 서식 실측치 |
 
 프로파일 JSON은 `hwpx_studio/profiles/`에 있다(설치본에 함께 들어간다). 규격: `docs/profile-spec.md`
 
@@ -316,7 +372,7 @@ pytest -q
 HWPX_LEGACY_GENERATOR=/path/to/hwpx_generator.py pytest tests/test_parity.py
 ```
 
-의존성은 `python-hwpx>=6.2,<7`(Apache-2.0)이며, 이미지 도식에만 matplotlib이 추가로 필요하다.
+의존성은 `python-hwpx>=6.2,<7`(Apache-2.0, `lxml` 필요)이며, 이미지 도식에만 matplotlib이 추가로 필요하다.
 
 ## 문서
 

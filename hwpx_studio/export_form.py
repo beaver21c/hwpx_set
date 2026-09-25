@@ -191,9 +191,9 @@ AI(Claude·GPT·codex)에게는 이 폴더를 통째로 주고 "원고를 마커
 SKILL_TEMPLATE = """---
 name: {{slug}}
 description: >-
-  {{name}} 서식 그대로 한글 문서(.hwpx)를 만든다. 마커를 붙인 텍스트로 본문을 쓰면
-  양식의 스타일·글꼴·자동 글머리표를 그대로 지킨 hwpx가 나온다. {{footnote}}'{{name}}',
-  '이 양식으로', '한글 보고서', '.hwpx로 만들어줘' 요청 시 사용.
+  {{short}} 양식 그대로 한글 문서(.hwpx)를 만든다. 마커 텍스트로 본문을 쓰면
+  스타일·글꼴·자동 글머리표를 지킨 hwpx가 나온다. '{{short}}', '이 양식으로',
+  '.hwpx로 만들어줘' 요청 시 사용.
 ---
 
 # {{name}} 문서 만들기
@@ -341,6 +341,7 @@ def bundle_fields(form: Dict[str, Any]) -> Dict[str, str]:
     return {
         "name": name,
         "slug": _slug(name),
+        "short": _short(name),
         "markers": _marker_rows(form),
         "footnote": ("각주는 근거가 되는 말 뒤에 `[^1]`로 단다. "
                      if form.get("footnote") else ""),
@@ -351,6 +352,15 @@ def render(template: str, fields: Dict[str, str]) -> str:
     for key, value in fields.items():
         template = template.replace("{{%s}}" % key, value)
     return template
+
+
+SHORT_NAME_MAX = 20
+
+
+def _short(name: str) -> str:
+    """스킬 설명에 넣을 이름. claude.ai는 설명을 200자까지만 받는다."""
+    name = " ".join(str(name).split())
+    return name if len(name) <= SHORT_NAME_MAX else name[:SHORT_NAME_MAX - 1] + "…"
 
 
 def _slug(name: str) -> str:
@@ -424,7 +434,7 @@ def write_bundle(files: Dict[str, bytes], out_dir: Path) -> Path:
 
 
 def pack_bundle(files: Dict[str, bytes], root: str) -> bytes:
-    """`.skill`·`.zip`으로 묶는다. 폴더 이름을 한 겹 두어 그대로 풀 수 있게 한다."""
+    """zip으로 묶는다. 폴더를 한 겹 둔다 — claude.ai는 그 폴더 이름이 스킬 이름과 같아야 받는다."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for name, data in files.items():

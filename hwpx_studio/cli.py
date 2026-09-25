@@ -255,17 +255,17 @@ def run_formkit(source: str, out: Optional[str], name: str,
                 pack: Optional[str], report_only: bool,
                 bullets: str = "auto") -> int:
     """양식 hwpx를 해부해 그 양식 전용 꾸러미를 만든다."""
-    from .export_form import build_bundle, pack_bundle, write_bundle
+    from .export_form import _slug, build_bundle, pack_bundle, write_bundle
 
     files, result = build_bundle(source, name=name, bullets=bullets)
     _echo(result.report)
     if report_only:
         return 0
     if not out and not pack:
-        _echo("만들 곳을 지정할 것: -o 폴더 또는 --pack 파일.skill")
+        _echo("만들 곳을 지정할 것: -o 폴더 또는 --pack 파일.zip")
         return 2
 
-    root = result.form["name"]
+    root = _slug(result.form["name"])     # claude.ai: 폴더 이름 = 스킬 이름
     if out:
         path = write_bundle(files, Path(out))
         _echo(f"꾸러미 저장 → {path} ({len(files)}개 파일)")
@@ -275,6 +275,32 @@ def run_formkit(source: str, out: Optional[str], name: str,
         _echo(f"꾸러미 묶음 저장 → {pack} ({len(data):,}바이트)")
     if result.notes:
         _echo("살펴볼 것: " + " / ".join(result.notes))
+    return 0
+
+
+def run_skill(profile_arg: str, name: str, pack: Optional[str],
+              out: Optional[str], skill_id: str = "") -> int:
+    """서식 → 채팅창용 스킬(표준 라이브러리 빌더 동봉)."""
+    from .export_form import write_bundle
+    from .skillpack import PRESET_IDS, build_skill, pack_skill, skill_fields
+
+    if not out and not pack:
+        _echo("만들 곳을 지정할 것: --pack 스킬.zip 또는 -o 폴더")
+        return 2
+    profile = load_profile(profile_arg)
+    skill_id = skill_id or PRESET_IDS.get(profile_arg, "")
+    fields = skill_fields(profile, name, skill_id)
+    files = build_skill(profile, name, skill_id=skill_id)
+    if out:
+        target = Path(out)
+        for path in files:
+            (target / path).parent.mkdir(parents=True, exist_ok=True)
+        write_bundle(files, target)
+        _echo(f"스킬 저장 → {target} ({len(files)}개 파일)")
+    if pack:
+        data = pack_skill(files, fields["slug"])
+        Path(pack).write_bytes(data)
+        _echo(f"스킬 zip 저장 → {pack} ({len(data):,}바이트, 스킬 이름 {fields['slug']})")
     return 0
 
 
@@ -376,7 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_form.add_argument("-o", "--out", help="꾸러미를 풀어 놓을 폴더")
     p_form.add_argument("--name", default="", help="양식 이름(기본: 파일 이름)")
     p_form.add_argument("--pack", metavar="PATH",
-                        help="꾸러미를 .skill 한 파일로 묶어 저장")
+                        help="꾸러미를 zip 한 파일로 묶어 저장(Claude·ChatGPT에 스킬로 그대로 올린다)")
     p_form.add_argument("--bullets", default="auto",
                         choices=["auto", "hangul", "text"],
                         help="줄머리 기호를 누가 붙이나 "
@@ -391,7 +417,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_read.add_argument("--form", help="대상 양식의 form.json(마커를 맞춰 준다)")
     p_read.add_argument("--report", help="추정 근거를 저장할 경로")
 
-    p_exp = sub.add_parser("export-skill", help="프로파일 → 스킬 폴더")
+    p_skill = sub.add_parser(
+        "skill", help="서식 → Claude·ChatGPT 채팅창에 올리는 스킬 zip(설치 없이 돈다)")
+    p_skill.add_argument("profile", nargs="?", default="report-crown",
+                         help="내장 서식 이름 또는 JSON 경로(기본: 크라운판)")
+    p_skill.add_argument("--name", default="", help="스킬 이름(기본: 서식 이름)")
+    p_skill.add_argument("--id", default="", dest="skill_id",
+                         help="스킬 영문 이름(소문자·숫자·하이픈). 기본: 이름에서 만든다")
+    p_skill.add_argument("--pack", metavar="PATH", help="zip으로 저장")
+    p_skill.add_argument("-o", "--out", help="폴더로 풀어 저장")
+
+    p_exp = sub.add_parser("export-skill", help="프로파일 → 스킬 폴더(Claude Code용, python-hwpx 필요)")
     p_exp.add_argument("profile")
     p_exp.add_argument("-o", "--out", default="./my-skill")
     p_exp.add_argument("--slug", default="hwpx-report")
@@ -427,6 +463,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                                args.report_only, args.bullets)
         if cmd == "readback":
             return run_readback(args.source, args.out, args.form, args.report)
+        if cmd == "skill":
+            return run_skill(args.profile, args.name, args.pack, args.out, args.skill_id)
         if cmd == "export-skill":
             return run_export_skill(args.profile, args.out, args.slug, args.standalone)
     except FileNotFoundError as exc:

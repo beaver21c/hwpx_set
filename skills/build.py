@@ -3,7 +3,7 @@
 
 `hwpx-studio export-skill`이 만드는 것(프로파일·스크립트·엔진)에, 여기 있는
 SKILL.md와 reference/를 덮어씌운다. 그래서 엔진이 바뀌어도 다시 만들면 되고,
-KIHASA 작성 규칙은 사람이 손으로 관리한다.
+집필 규칙은 사람이 손으로 관리한다.
 
     python skills/build.py                      # dist/hwpx-report-studio/
     python skills/build.py -o ~/.claude/skills  # 바로 설치
@@ -81,8 +81,8 @@ def check_skill(target: Path) -> list[str]:
     desc = fields.get("description", "")
     if not desc:
         problems.append("description이 없다(여러 줄 `>-` 표기를 썼는지 확인)")
-    elif len(desc) > 1024:
-        problems.append(f"description이 너무 길다({len(desc)}자)")
+    elif len(desc) > 200:
+        problems.append(f"description이 너무 길다({len(desc)}자, claude.ai는 200자까지)")
     elif desc.startswith((">", "|", "&", "*", "[", "{")):
         problems.append(f"description이 YAML 특수 문자로 시작한다: {desc[:10]!r}")
 

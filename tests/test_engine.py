@@ -85,7 +85,7 @@ _PROFILES = Path(__file__).resolve().parent.parent / "hwpx_studio" / "profiles"
 
 
 def _research_profile():
-    return load_profile(str(_PROFILES / "kihasa-research.json"))
+    return load_profile(str(_PROFILES / "report-crown.json"))
 
 
 def _research_texts(source: str):
@@ -196,3 +196,30 @@ def test_paper_names_cover_the_korean_report_sizes():
     assert paper_mm({"size": "A4"}) == (210.0, 297.0)
     assert paper_mm({"width_mm": 166, "height_mm": 241}) == (166.0, 241.0)
     assert paper_mm({"size": "없는판형"}) is None      # 모르면 손대지 않는다
+
+
+def _captions_of(profile, text):
+    import io
+    import zipfile
+
+    from hwpx_studio.engine import build_document
+    from hwpx_studio.parser import parse_text
+    data = build_document(profile, parse_text(text, profile).items).data
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        section = z.read("Contents/section0.xml").decode("utf-8")
+    from html import unescape
+    return [unescape(t) for t in re.findall(r"<hp:t>([^<]*(?:표|그림)[^<]*)</hp:t>", section)]
+
+
+_CAPTION_TEXT = "표) 첫 표\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n# 장 제목\n\n표) 둘째 표\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n그림) 그림 제목\n"
+
+
+def test_caption_format_follows_the_profile():
+    """캡션 번호 모양을 서식에서 고른다. 장 앞(장 번호 0)에서는 `{장}-`를 뺀다."""
+    profile = load_profile(str(_PROFILES / "report-crown.json"))
+    assert _captions_of(profile, _CAPTION_TEXT) == [
+        "〈표 1〉 첫 표", "〈표 1-1〉 둘째 표", "〔그림 1-1〕 그림 제목"]
+
+    profile["captions"] = {"table": "<표 {장}.{번호}>", "figure": "[그림 {번호}]"}
+    assert _captions_of(profile, _CAPTION_TEXT) == [
+        "<표 1> 첫 표", "<표 1.1> 둘째 표", "[그림 1] 그림 제목"]

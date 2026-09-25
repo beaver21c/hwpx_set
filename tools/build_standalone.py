@@ -31,7 +31,8 @@ DOCS = ROOT / "docs"
 
 #: 의존 순서대로 이어 붙인다(모듈 간 import는 제거된다)
 MODULES = ["js/zip.js", "js/xml.js", "js/hwpx-studio.js", "js/capture.js", "assets.js",
-           "js/formkit.js", "js/readback.js", "js/bundle.js", "js/app.js"]
+           "js/formkit.js", "js/readback.js", "js/bundle.js", "js/skillpack.js",
+           "js/skill-ui.js", "js/app.js"]
 
 IMPORT_RE = re.compile(r"^\s*import\s[^;]*;\s*$", re.M)
 EXPORT_DEFAULT_RE = re.compile(r"^\s*export default .*;\s*$", re.M)

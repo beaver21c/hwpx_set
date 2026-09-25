@@ -291,7 +291,7 @@ pbpaste | hwpx-studio capture -                            # 붙여 넣은 내�
 | `capture` 계층이 뒤죽박죽 | SVG에 연결선이 없어 높이로 추정함 | 나온 블록의 들여쓰기를 손으로 고칠 것 |
 | 상자 글자가 두 줄로 꺾임 | 이름이 셀 폭보다 김 | 프로파일 `diagram.col_width_mm` 늘리기 또는 이름 줄이기 |
 | 이미지 도식의 한글이 네모로 나옴 | matplotlib에 한글 글꼴 없음 | `apt install fonts-nanum` 또는 `pip install koreanize-matplotlib` 후 재실행 |
-| `render=image`인데 표로 나옴 | matplotlib 미설치 | `pip install hwpx-studio[image]` (경고 메시지로도 안내된다) |
+| `render=image`인데 표로 나옴 | matplotlib 미설치 | `pip install "hwpx-studio[image] @ git+https://github.com/beaver21c/hwpx_set.git"` (경고 메시지로도 안내된다) |
 
 ---
 
